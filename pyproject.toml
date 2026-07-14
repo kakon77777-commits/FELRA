@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "felra"
+version = "0.1.0"
+description = "Python-first academic verification and visualization workbench for FELRA"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Neo.K"}]
+dependencies = [
+  "matplotlib>=3.8",
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+felra = "felra.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/felra"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

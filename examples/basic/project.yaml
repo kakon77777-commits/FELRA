@@ -1,0 +1,24 @@
+project:
+  id: nonnegative_square
+  title: 平方函數非負性的有限域機器檢驗
+  language: zh-TW
+
+claims:
+  - id: claim_001
+    statement: 在聲明取樣域內，x 的平方皆非負
+    status: hypothesis
+    required_checks:
+      - numerical
+      - boundaries
+      - counterexample_search
+
+parameters:
+  x:
+    type: float
+    range: [-10, 10]
+    samples: 10001
+
+outputs:
+  figures:
+    - line_plot
+  formats: [png]
