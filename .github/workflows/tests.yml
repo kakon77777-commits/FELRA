@@ -19,3 +19,8 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest
       - run: ruff check src tests
+      - run: python -m compileall -q src tests
+      - run: felra run examples/advanced/project.yaml --output artifacts/advanced
+      - run: felra batch examples/batch/batch.yaml --output artifacts/batch
+      - run: felra run examples/data/project.yaml --output artifacts/data
+      - run: felra batch examples/repeated_batch/batch.yaml --output artifacts/repeated --workers 2

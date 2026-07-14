@@ -17,6 +17,7 @@ def _jsonable(bundle: EvidenceBundle) -> dict[str, Any]:
         },
         "created_at": bundle.created_at,
         "passed": bundle.passed,
+        "metadata": bundle.metadata,
         "results": [
             {
                 "check_name": result.check_name,
@@ -52,9 +53,14 @@ def write_evidence_bundle(bundle: EvidenceBundle, output_dir: str | Path) -> Non
         "",
         "> This report records finite-budget machine validation. It is not a universal proof.",
         "",
-        "## Validation channels",
+        "## Reproducibility metadata",
         "",
     ]
+    lines.extend(
+        f"- `{key}`: `{json.dumps(value, ensure_ascii=False)}`"
+        for key, value in bundle.metadata.items()
+    )
+    lines.extend(["", "## Validation channels", ""])
 
     for result in bundle.results:
         lines.extend(

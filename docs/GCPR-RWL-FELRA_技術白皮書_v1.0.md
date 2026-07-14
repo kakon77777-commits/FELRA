@@ -1930,3 +1930,77 @@ $$
 $$
 
 這使圖形不只是視覺材料，而是研究證據鏈中的正式節點。
+
+---
+
+# 附錄 E：v0.3 學術分析管線
+
+FELRA-PyLab v0.3 將單次命題驗證擴展為六通道證據結構：
+
+$$
+\mathcal E_{0.3}
+=
+\mathcal V
+\oplus
+\mathcal S
+\oplus
+\mathcal R
+\oplus
+\mathcal L
+\oplus
+\mathcal P
+\oplus
+\mathcal B
+$$
+
+其中：
+
+- $\mathcal V$：有限域命題驗證與反例搜索；
+- $\mathcal S$：局部有限差分敏感度；
+- $\mathcal R$：參考—近似殘差；
+- $\mathcal L$：參數掃描與目標地景；
+- $\mathcal P$：雙目標 Pareto 前沿；
+- $\mathcal B$：批次預算、種子與設定比較。
+
+v0.3 的工程意義在於：研究者不再只得到「通過／失敗」，而能得到命題的脆弱方向、近似誤差區域、最適候選、不可消除的目標取捨，以及結論對運算條件的依賴。
+
+此版本依然維持下列邊界：敏感度屬局部診斷而非完整 Sobol 分解；Pareto 分析限於兩個目標；殘差資料來自聲明域表達式而非外部觀測資料庫；批次執行為本機序列流程。上述限制均會被寫入證據包，而不以功能名稱掩蓋。
+
+---
+
+# 附錄 F：v0.4 資料—統計—重複實驗管線
+
+FELRA-PyLab v0.4 將外部觀測資料正式納入證據架構：
+
+$$
+\mathcal E_{0.4}
+=
+\mathcal E_{0.3}
+\oplus
+\mathcal D
+\oplus
+\mathcal T
+\oplus
+\mathcal C
+\oplus
+\mathcal R_p,
+$$
+
+其中：
+
+- $\mathcal D$：資料契約、正規化、品質檢查與來源雜湊；
+- $\mathcal T$：描述統計、假設檢定與效應量；
+- $\mathcal C$：解析式與 Bootstrap 信賴區間；
+- $\mathcal R_p$：不同種子下的重複實驗與並行批次。
+
+資料被視為具有來源與投影歷史的證據物件，而不是可任意讀入的無上下文數值矩陣：
+
+$$
+D_{\mathrm{evidence}}
+=
+(D_{\mathrm{source}},H_{\mathrm{source}},\Sigma_{\mathrm{column}},Q,\Pi_{\mathrm{normalize}}).
+$$
+
+$H_{\mathrm{source}}$ 是來源 SHA-256，$\Sigma_{\mathrm{column}}$ 是欄位型別與必要性契約，$Q$ 是缺失、無效、丟棄與重複資料品質向量，$\Pi_{\mathrm{normalize}}$ 則是從來源檔案到可計算陣列的確定性投影。
+
+統計模組不把顯著性等同於真理。對虛無假設 $H_0$，輸出 `reject_null` 只表示在指定 $\alpha$、檢定模型及樣本條件下觀測到相應證據；它不自動建立因果性、外部效度或研究設計的正確性。重複實驗則用不同偽隨機種子測量有限計算程序的穩定性，並不替代真正的獨立資料重複與實驗重現。

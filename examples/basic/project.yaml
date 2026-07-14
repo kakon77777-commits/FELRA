@@ -3,14 +3,10 @@ project:
   title: 平方函數非負性的有限域機器檢驗
   language: zh-TW
 
-claims:
-  - id: claim_001
-    statement: 在聲明取樣域內，x 的平方皆非負
-    status: hypothesis
-    required_checks:
-      - numerical
-      - boundaries
-      - counterexample_search
+execution:
+  max_evaluations: 200000
+  random_samples: 20000
+  seed: 42
 
 parameters:
   x:
@@ -18,7 +14,33 @@ parameters:
     range: [-10, 10]
     samples: 10001
 
+claims:
+  - id: claim_001
+    statement: 在聲明取樣域內，x 的平方皆非負
+    expression: x ** 2 >= 0
+    status: hypothesis
+    required_checks:
+      - numerical
+      - boundaries
+      - counterexample_search
+
 outputs:
   figures:
-    - line_plot
-  formats: [png]
+    - id: square_curve
+      type: line
+      x: x
+      y: x ** 2
+      title: 平方函數
+      xlabel: x
+      ylabel: x²
+      filename: square_curve.png
+      claim_id: claim_001
+    - id: square_distribution
+      type: histogram
+      y: x ** 2
+      title: 平方值分布
+      xlabel: x²
+      ylabel: Frequency
+      bins: 60
+      filename: square_distribution.png
+      claim_id: claim_001

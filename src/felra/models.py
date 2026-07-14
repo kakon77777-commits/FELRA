@@ -33,9 +33,8 @@ class EvidenceBundle:
     claim: Claim
     results: list[ValidationResult] = field(default_factory=list)
     figures: list[str] = field(default_factory=list)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def passed(self) -> bool:

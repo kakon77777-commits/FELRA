@@ -1,0 +1,13 @@
+batch:
+  id: repeated_statistics
+  title: FELRA v0.4 重複統計實驗與並行批次
+  workers: 2
+
+experiments:
+  - id: trial_replicates
+    project: ../data/project.yaml
+    repeat:
+      count: 3
+      seed_path: execution.seed
+      seed_start: 101
+      seed_step: 101

@@ -1,0 +1,93 @@
+project:
+  id: clinical_trial_statistics
+  title: FELRA v0.4 外部資料與統計分析示範
+  language: zh-TW
+
+execution:
+  max_evaluations: 100000
+  random_samples: 20000
+  seed: 2026
+
+datasets:
+  trial:
+    path: data/clinical_trial.csv
+    format: csv
+    encoding: utf-8
+    on_error: drop
+    missing_values: ["", NA, N/A, null, none, nan]
+    columns:
+      subject_id: str
+      group: str
+      age: int
+      dose: float
+      before: float
+      after: float
+      score: float
+      note: {type: str, required: false}
+
+claims:
+  - id: adult_finite_scores
+    statement: 所有納入資料的受試者皆成年，且核心分數為有限值
+    dataset: trial
+    expression: age >= 18 and isfinite(before) and isfinite(after) and isfinite(score)
+    status: data_quality_claim
+    required_checks: [dataset_rows]
+
+  - id: bounded_decline
+    statement: 在此示範資料中，治療後分數不低於治療前五分以上
+    dataset: trial
+    expression: after >= before - 5
+    status: empirical_claim
+    required_checks: [dataset_rows]
+
+analyses:
+  - id: grouped_descriptives
+    type: descriptive
+    title: 對照組與治療組描述統計
+    dataset: trial
+    columns: [before, after, score]
+    group_by: group
+    confidence: 0.95
+    bins: 24
+
+  - id: treatment_score_test
+    type: hypothesis_test
+    title: 治療組與對照組最終分數 Welch t 檢定
+    dataset: trial
+    test: independent_t
+    column: score
+    group_by: group
+    groups: [control, treatment]
+    equal_var: false
+    alternative: two-sided
+    alpha: 0.05
+
+  - id: before_after_test
+    type: hypothesis_test
+    title: 前後測成對 t 檢定
+    dataset: trial
+    test: paired_t
+    columns: [before, after]
+    alternative: two-sided
+    alpha: 0.05
+
+  - id: dose_score_correlation
+    type: hypothesis_test
+    title: 劑量與最終分數 Pearson 相關
+    dataset: trial
+    test: pearson
+    columns: [dose, score]
+    alternative: two-sided
+    alpha: 0.05
+
+  - id: score_bootstrap_ci
+    type: bootstrap_ci
+    title: 最終分數平均值 Bootstrap 信賴區間
+    dataset: trial
+    column: score
+    statistic: mean
+    confidence: 0.95
+    resamples: 3000
+
+outputs:
+  figures: []

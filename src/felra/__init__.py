@@ -1,6 +1,16 @@
 """FELRA Python-first academic verification workbench."""
 
+from .config import ProjectSpec, load_project
 from .models import Claim, EvidenceBundle, ValidationResult
+from .runner import ProjectRun, run_project
 
-__all__ = ["Claim", "EvidenceBundle", "ValidationResult"]
-__version__ = "0.1.0"
+__all__ = [
+    "Claim",
+    "EvidenceBundle",
+    "ProjectRun",
+    "ProjectSpec",
+    "ValidationResult",
+    "load_project",
+    "run_project",
+]
+__version__ = "0.4.0"

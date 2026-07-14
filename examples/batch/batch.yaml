@@ -1,0 +1,18 @@
+batch:
+  id: budget_comparison
+  title: FELRA 運算預算比較
+
+experiments:
+  - id: low_budget
+    project: ../advanced/project.yaml
+    overrides:
+      execution.max_evaluations: 5000
+      execution.random_samples: 2000
+      execution.seed: 7
+
+  - id: standard_budget
+    project: ../advanced/project.yaml
+    overrides:
+      execution.max_evaluations: 100000
+      execution.random_samples: 20000
+      execution.seed: 42

@@ -1,0 +1,56 @@
+project:
+  id: unit_disk
+  title: 單位圓盤內部條件與距離地景
+  language: zh-TW
+
+execution:
+  max_evaluations: 50000
+  random_samples: 30000
+  seed: 2026
+
+parameters:
+  x:
+    type: float
+    range: [-1.5, 1.5]
+    samples: 181
+  y:
+    type: float
+    range: [-1.5, 1.5]
+    samples: 181
+
+claims:
+  - id: radial_energy_nonnegative
+    statement: 在聲明域內，徑向平方距離皆非負
+    expression: x ** 2 + y ** 2 >= 0
+    status: demonstration
+    required_checks: [numerical, boundaries, counterexample_search]
+
+outputs:
+  figures:
+    - id: radial_energy
+      type: heatmap
+      x: x
+      y: y
+      z: x ** 2 + y ** 2
+      title: 徑向平方距離地景
+      xlabel: x
+      ylabel: y
+      filename: radial_energy.png
+    - id: radial_contours
+      type: contour
+      x: x
+      y: y
+      z: x ** 2 + y ** 2
+      title: 徑向平方距離等高線
+      xlabel: x
+      ylabel: y
+      filename: radial_contours.png
+    - id: unit_disk_phase
+      type: phase_map
+      x: x
+      y: y
+      z: x ** 2 + y ** 2 <= 1
+      title: 單位圓盤相位圖
+      xlabel: x
+      ylabel: y
+      filename: unit_disk_phase.png

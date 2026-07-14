@@ -1,0 +1,83 @@
+project:
+  id: advanced_analysis
+  title: FELRA v0.3 多分析示範
+  language: zh-TW
+
+execution:
+  max_evaluations: 100000
+  random_samples: 20000
+  seed: 42
+
+parameters:
+  x:
+    type: float
+    range: [-2.0, 2.0]
+    samples: 201
+  a:
+    type: float
+    range: [0.0, 2.0]
+    samples: 41
+  b:
+    type: float
+    range: [0.0, 2.0]
+    samples: 41
+
+claims:
+  - id: nonnegative_quadratic
+    statement: 在聲明域內，a·x²+b 非負
+    expression: a * x ** 2 + b >= 0
+    status: hypothesis
+    required_checks: [numerical, boundaries, counterexample_search]
+
+analyses:
+  - id: local_sensitivity
+    type: sensitivity
+    title: 二次模型局部敏感度
+    expression: a * x ** 2 + b
+    parameters: [x, a, b]
+    baseline: {x: 1.0, a: 1.0, b: 1.0}
+    relative_step: 0.001
+    claim_id: nonnegative_quadratic
+
+  - id: taylor_residual
+    type: residual
+    title: 指數函數四階泰勒近似殘差
+    reference: exp(x)
+    approximation: 1 + x + x ** 2 / 2 + x ** 3 / 6 + x ** 4 / 24
+    independent: x
+    tolerance: 0.5
+    bins: 50
+
+  - id: parameter_landscape
+    type: parameter_sweep
+    title: 參數目標地景
+    objective: (a - 1.2) ** 2 + (b - 0.7) ** 2
+    parameters: [a, b]
+    fixed: {x: 1.0}
+    goal: minimize
+    top_k: 12
+
+  - id: accuracy_complexity_tradeoff
+    type: pareto
+    title: 準確度—複雜度 Pareto 前沿
+    parameters: [a, b]
+    fixed: {x: 1.0}
+    objectives:
+      - name: fitting_error
+        expression: (a - 1.2) ** 2 + (b - 0.7) ** 2
+        goal: minimize
+      - name: model_complexity
+        expression: a + b
+        goal: minimize
+
+outputs:
+  figures:
+    - id: quadratic_slice
+      type: line
+      x: x
+      y: a * x ** 2 + b
+      title: 二次模型中央參數切片
+      xlabel: x
+      ylabel: a·x²+b
+      filename: quadratic_slice.png
+      claim_id: nonnegative_quadratic
