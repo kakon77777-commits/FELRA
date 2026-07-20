@@ -394,6 +394,18 @@ class ModelComparisonAnalysisSpec(BaseAnalysisSpec):
 
 
 @dataclass(frozen=True)
+class SymbolicAnalysisSpec(BaseAnalysisSpec):
+    check: str = "equivalence"
+    variables: tuple[str, ...] = ()
+    assumptions: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    lhs: str = ""
+    rhs: str = ""
+    expression: str = ""
+    with_respect_to: str = ""
+    expected_derivative: str = ""
+
+
+@dataclass(frozen=True)
 class PreregistrationSpec:
     enabled: bool = False
     path: str = ".felra-preregistration/preregistration.json"
@@ -446,6 +458,7 @@ AnalysisSpec: TypeAlias = (
     | MultipleComparisonAnalysisSpec
     | CrossValidationAnalysisSpec
     | ModelComparisonAnalysisSpec
+    | SymbolicAnalysisSpec
 )
 
 
@@ -832,10 +845,62 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             primary_metric=primary_metric,
         )
 
+    if kind == "symbolic":
+        _require_fields(data, {"check", "variables"}, context=f"Analysis {analysis_id!r}")
+        check = str(data["check"])
+        if check not in {"equivalence", "derivative"}:
+            raise ProjectConfigError("symbolic check must be equivalence or derivative")
+        variables = tuple(str(item) for item in data["variables"])
+        if not variables:
+            raise ProjectConfigError("symbolic analysis requires at least one variable")
+        if len(variables) != len(set(variables)):
+            raise ProjectConfigError("symbolic variables must be unique")
+        raw_assumptions = data.get("assumptions", {})
+        if not isinstance(raw_assumptions, dict):
+            raise ProjectConfigError("symbolic assumptions must be a mapping")
+        assumptions: dict[str, tuple[str, ...]] = {}
+        for name, keywords in raw_assumptions.items():
+            if str(name) not in variables:
+                raise ProjectConfigError(
+                    f"symbolic assumptions reference undeclared variable {name!r}"
+                )
+            if isinstance(keywords, str):
+                keywords = [keywords]
+            assumptions[str(name)] = tuple(str(item) for item in keywords)
+        if check == "equivalence":
+            _require_fields(data, {"lhs", "rhs"}, context=f"Analysis {analysis_id!r}")
+            return SymbolicAnalysisSpec(
+                **base,
+                check=check,
+                variables=variables,
+                assumptions=assumptions,
+                lhs=str(data["lhs"]),
+                rhs=str(data["rhs"]),
+            )
+        _require_fields(
+            data,
+            {"expression", "with_respect_to", "expected_derivative"},
+            context=f"Analysis {analysis_id!r}",
+        )
+        with_respect_to = str(data["with_respect_to"])
+        if with_respect_to not in variables:
+            raise ProjectConfigError(
+                f"symbolic with_respect_to {with_respect_to!r} must be a declared variable"
+            )
+        return SymbolicAnalysisSpec(
+            **base,
+            check=check,
+            variables=variables,
+            assumptions=assumptions,
+            expression=str(data["expression"]),
+            with_respect_to=with_respect_to,
+            expected_derivative=str(data["expected_derivative"]),
+        )
+
     raise ProjectConfigError(
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
-        "multiple_comparisons, cross_validation, or model_comparison"
+        "multiple_comparisons, cross_validation, model_comparison, or symbolic"
     )
 
 

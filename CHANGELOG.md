@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 — 2026-07-20
+
+- Added `symbolic` analysis type (V2 symbolic verification): exact algebraic-equivalence and derivative checks via SymPy, complementing the existing sampling-based residual/sensitivity/counterexample channels.
+- Added per-variable symbolic assumptions (`real`, `positive`, `negative`, `nonnegative`, `nonpositive`, `nonzero`, `integer`, `rational`, `complex`); unassumed variables default to `real`.
+- Added a safe AST-based symbolic expression parser (`felra.symbolic`), mirroring the existing numeric expression evaluator's whitelist approach — no `sympify`/`eval` on raw strings.
+- Added v0.8 schema, symbolic-verification example, documentation, and 7 regression tests.
+- First step toward FELRA v1.0.0 (defined as: full Python-first global verification orchestration, V0-V8, per `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` section 15 stage 2). Remaining gaps: V3 numerical soundness, V8 cross-method consistency.
+
 ## 0.7.0 — 2026-07-14
 
 - Added immutable scientific-plan preregistration with warning and strict enforcement modes.

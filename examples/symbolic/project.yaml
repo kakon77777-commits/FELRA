@@ -1,0 +1,65 @@
+project:
+  id: symbolic-verification-demo
+  title: FELRA v0.8 Symbolic Verification Demo
+  language: en
+
+execution:
+  max_evaluations: 401
+  random_samples: 400
+  seed: 11
+
+parameters:
+  x:
+    type: float
+    range: [-5, 5]
+    samples: 401
+
+claims:
+  - id: sqrt_square_equals_x
+    statement: >
+      For every sampled x, sqrt(x squared) equals x within floating-point
+      tolerance. This is the numeric, sampled-domain version of the same
+      question the symbolic analyses below answer exactly.
+    expression: abs(sqrt(x ** 2) - x) < 1e-9
+    status: hypothesis
+    required_checks: [numerical, boundaries, counterexample_search]
+
+analyses:
+  # V2 symbolic verification is an EXACT check over the declared domain, not a
+  # sampled one — it complements (does not replace) the counterexample search
+  # above. Here the same question is asked with no domain assumption on x:
+  # SymPy correctly reports NOT equivalent, because sqrt(x**2) == |x|, and
+  # |x| == x only when x is nonnegative.
+  - id: sqrt_square_unconstrained
+    type: symbolic
+    title: sqrt(x^2) vs x, x unconstrained real
+    check: equivalence
+    variables: [x]
+    lhs: sqrt(x ** 2)
+    rhs: x
+    claim_id: sqrt_square_equals_x
+
+  # The same pair of expressions, with x declared positive. Under that
+  # assumption the identity is exactly true everywhere in the domain, not
+  # just at the sampled points — this is what "symbolic" buys over "no
+  # counterexample found in N samples".
+  - id: sqrt_square_positive
+    type: symbolic
+    title: sqrt(x^2) vs x, x declared positive
+    check: equivalence
+    variables: [x]
+    assumptions:
+      x: [positive]
+    lhs: sqrt(x ** 2)
+    rhs: x
+
+  # Derivative check: verify a claimed closed-form derivative against SymPy's
+  # exact symbolic differentiation.
+  - id: cubic_derivative
+    type: symbolic
+    title: Derivative of x^3 + 2x
+    check: derivative
+    variables: [x]
+    expression: x ** 3 + 2 * x
+    with_respect_to: x
+    expected_derivative: 3 * x ** 2 + 2

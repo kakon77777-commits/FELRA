@@ -19,7 +19,7 @@ $$
 \text{SMT／Lean／RWL}.
 $$
 
-目前版本：**v0.7.0 — Preregistration, Provenance, Replay & Paper Export**
+目前版本：**v0.8.0 — Symbolic Verification (V2)**
 
 ## 核心能力
 
@@ -45,6 +45,7 @@ $$
 - Claim、資料、分析、圖形與報告的 JSON／DOT／SVG 證據溯源圖；
 - 科學結果 SHA-256 指紋與 `felra replay` 獨立重播；
 - `felra export` 論文級 Methods、Results、Limitations、CITATION 與檔案雜湊包；
+- 符號代數恆等與導數驗證（SymPy），支援每變數宣告假設（`positive`／`real`／`integer` 等）；
 
 ## 安裝
 
@@ -81,6 +82,7 @@ felra preregister examples/reproducibility/project.yaml --output examples/reprod
 felra run examples/reproducibility/project.yaml --output artifacts/reproducibility
 felra replay artifacts/reproducibility --output artifacts/replay
 felra export artifacts/reproducibility --output artifacts/paper-bundle
+felra run examples/symbolic/project.yaml --output artifacts/symbolic
 ```
 
 ## 外部資料規格
@@ -305,6 +307,32 @@ v0.1–v0.3 的能力保持相容：
 - `parameter_sweep`：一至高維目標地景；
 - `pareto`：有限候選集上的精確雙目標非支配前沿。
 
+## 符號驗證
+
+```yaml
+analyses:
+  - id: sqrt_square_positive
+    type: symbolic
+    check: equivalence
+    variables: [x]
+    assumptions:
+      x: [positive]
+    lhs: sqrt(x ** 2)
+    rhs: x
+
+  - id: cubic_derivative
+    type: symbolic
+    check: derivative
+    variables: [x]
+    expression: x ** 3 + 2 * x
+    with_respect_to: x
+    expected_derivative: 3 * x ** 2 + 2
+```
+
+`check: equivalence` 用 SymPy 化簡 `lhs - rhs`，判斷在宣告的變數假設下是否恆為零；`check: derivative` 比對 SymPy 精確微分結果與宣告的導數式。`assumptions` 支援 `real`／`positive`／`negative`／`nonnegative`／`nonpositive`／`nonzero`／`integer`／`rational`／`complex`，未宣告的變數預設為 `real`。
+
+這是**整個宣告域上的精確檢查**，跟 `residual`／`sensitivity`／反例搜索等取樣式通道是互補而非取代關係：取樣式通道回報「在 N 個取樣點內未發現反例」，符號通道回報「在宣告假設下，整個定義域上恆成立」——兩者是不同強度的主張，範例 `examples/symbolic/project.yaml` 特意示範同一個命題（`sqrt(x²) == x`）分別用兩種通道檢查，在未宣告 `x` 為正時，取樣式通道找到具體反例、符號通道也獨立回報不成立，兩者互相印證。
+
 ## 證據包
 
 ```text
@@ -334,12 +362,14 @@ python -m compileall -q src tests
 
 規格文件：
 
-- `docs/PROJECT_SPEC_v0.6.md`
+- `docs/PROJECT_SPEC_v0.8.md`
+- `docs/PREREGISTRATION_PROVENANCE_REPLAY_v0.7.md`
+- `docs/PROJECT_SPEC_v0.7.md`
 - `docs/MODEL_SELECTION_REGISTRY_v0.6.md`
 - `docs/POWER_ROBUSTNESS_CACHE_v0.5.md`
 - `docs/DATA_STATISTICS_PIPELINE_v0.4.md`
 - `docs/BATCH_REPLICATION_v0.4.md`
-- `schema/project-v0.6.schema.json`
+- `schema/project-v0.8.schema.json`
 - `schema/batch-v0.5.schema.json`
 
 完整理論設計見 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md`。

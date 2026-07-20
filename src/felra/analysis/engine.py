@@ -14,6 +14,7 @@ from felra.analysis.robustness import run_robustness
 from felra.analysis.sensitivity import run_sensitivity
 from felra.analysis.statistics import run_descriptive, run_hypothesis_test
 from felra.analysis.sweep import run_sweep
+from felra.analysis.symbolic import run_symbolic
 from felra.analysis.utils import jsonable
 from felra.cache import AnalysisCache, analysis_fingerprint
 from felra.config import (
@@ -31,6 +32,7 @@ from felra.config import (
     RobustnessAnalysisSpec,
     SensitivityAnalysisSpec,
     SweepAnalysisSpec,
+    SymbolicAnalysisSpec,
 )
 from felra.data import Dataset
 
@@ -148,6 +150,8 @@ def run_analysis(
                 output_root,
                 default_seed=project.execution.seed,
             )
+        elif isinstance(spec, SymbolicAnalysisSpec):
+            result = run_symbolic(spec, output_dir, output_root)
         else:  # pragma: no cover - exhaustive type guard
             raise TypeError(f"Unsupported analysis spec {type(spec).__name__}")
     except Exception as exc:
