@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.7.0 — 2026-07-14
+
+- Added immutable scientific-plan preregistration with warning and strict enforcement modes.
+- Added canonical plan SHA-256 fingerprints that exclude operational cache and registry settings.
+- Added JSON, Graphviz DOT, and portable SVG evidence-provenance graphs.
+- Added normalized-data replay projects and stable scientific-result SHA-256 fingerprints.
+- Added `felra replay` for independent result-fingerprint reproduction checks.
+- Added `felra export` for paper-ready Methods, Results, Limitations, CITATION, figures, reports, and file hashes.
+- Added v0.7 schema, strict preregistration example, documentation, and 33 regression tests.
+
+## 0.6.0 — 2026-07-14
+
+- Added Bonferroni, Holm, and Benjamini–Hochberg correction for declared comparison families.
+- Added named standardized effect sizes for parametric, rank-based, and correlation tests.
+- Added leakage-aware numeric regression cross-validation with out-of-fold predictions.
+- Added shared-fold linear and polynomial model comparison with RMSE, MAE, and R² ranking.
+- Added an append-only JSONL experiment registry and `felra registry` inspection command.
+- Added v0.6 schema, documentation, synthetic research example, and 30 regression tests.
+
+## 0.5.0 — 2026-07-14
+
+- Added CSV, JSON, JSONL, and transparent gzip dataset readers under one typed data contract.
+- Added noncentral-t power analysis for one-sample, paired, and independent-samples designs.
+- Added Fisher-z approximate power analysis for correlation designs.
+- Added bootstrap and subsample robustness analyses for means, medians, standard deviations, correlations, and group mean differences.
+- Added sign stability, relative dispersion, percentile intervals, and full resampling distributions.
+- Added content-addressed per-analysis caching keyed by FELRA version, analysis spec, project config, dataset hashes, and execution seed.
+- Added cache provenance to analysis metrics and project manifests.
+- Added root-level local Agent synchronization protocol and structured handoff/report templates.
+- Added v0.5 examples, schemas, documentation, and 26 regression tests.
+
 ## 0.4.0 — 2026-07-14
 
 - Added typed external CSV datasets with deterministic normalization and source SHA-256.

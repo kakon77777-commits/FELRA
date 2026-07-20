@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "policy": "Archive entries must use ASCII-safe physical paths.",
+  "mappings": [
+    {
+      "legacy_logical_path": "docs/GCPR-RWL-FELRA_技術白皮書_v1.0.md",
+      "archive_physical_path": "docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md",
+      "document_language": "zh-TW",
+      "reason": "Windows PowerShell Expand-Archive filename portability"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+project:
+  id: robustness_power_cache
+  title: FELRA v0.5 功效、穩健性與快取示範
+  language: zh-TW
+
+execution:
+  seed: 2026
+  cache: true
+  cache_dir: .felra-cache
+  refresh_cache: false
+
+datasets:
+  trial:
+    path: data/clinical_trial.jsonl
+    format: jsonl
+    on_error: drop
+    columns:
+      subject_id: str
+      group: str
+      age: int
+      dose: float
+      before: float
+      after: float
+      score: float
+      note: {type: str, required: false}
+
+claims:
+  - id: finite_scores
+    statement: 所有納入資料的核心分數皆為有限值
+    dataset: trial
+    expression: isfinite(before) and isfinite(after) and isfinite(score)
+    required_checks: [dataset_rows]
+
+analyses:
+  - id: independent_t_power
+    type: power
+    title: 雙組獨立樣本 t 檢定功效曲線
+    test: independent_t
+    effect_size: 0.6
+    alpha: 0.05
+    target_power: 0.8
+    alternative: two-sided
+    allocation_ratio: 1.0
+    max_sample_size: 500
+
+  - id: treatment_effect_robustness
+    type: robustness
+    title: 治療組與對照組平均差重抽樣穩健性
+    dataset: trial
+    statistic: mean_difference
+    columns: [score]
+    group_by: group
+    groups: [control, treatment]
+    method: bootstrap
+    repetitions: 1000
+    confidence: 0.95
+    seed: 305
+    bins: 35
+
+  - id: dose_score_robustness
+    type: robustness
+    title: 劑量與最終分數相關性的子樣本穩健性
+    dataset: trial
+    statistic: correlation
+    columns: [dose, score]
+    method: subsample
+    repetitions: 1000
+    fraction: 0.8
+    confidence: 0.95
+    seed: 509
+    bins: 35
+
+outputs:
+  figures: []

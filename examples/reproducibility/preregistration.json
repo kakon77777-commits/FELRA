@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-07-14T15:30:43.295651+00:00",
+  "project_id": "reproducibility-demo",
+  "project_title": "FELRA v0.7 Preregistration and Replay Demo",
+  "source_path": "project.yaml",
+  "plan_sha256": "cd85213961eb9dc06fdd56b9feb846e0e7aecf345866f302eab87dc9a73ab754",
+  "canonical_plan": {
+    "project": {
+      "id": "reproducibility-demo",
+      "title": "FELRA v0.7 Preregistration and Replay Demo",
+      "language": "en"
+    },
+    "execution": {
+      "max_evaluations": 1001,
+      "random_samples": 1000,
+      "seed": 73
+    },
+    "parameters": {
+      "x": {
+        "type": "float",
+        "range": [
+          -5,
+          5
+        ],
+        "samples": 1001
+      }
+    },
+    "claims": [
+      {
+        "id": "square_nonnegative",
+        "statement": "The square of every sampled x is non-negative.",
+        "expression": "x ** 2 >= 0",
+        "status": "hypothesis",
+        "required_checks": [
+          "numerical",
+          "boundaries",
+          "counterexample_search"
+        ]
+      }
+    ],
+    "analyses": [
+      {
+        "id": "square_sensitivity",
+        "type": "sensitivity",
+        "title": "Local sensitivity of x squared",
+        "expression": "x ** 2",
+        "parameters": [
+          "x"
+        ],
+        "baseline": {
+          "x": 1.0
+        },
+        "claim_id": "square_nonnegative"
+      }
+    ],
+    "outputs": {
+      "figures": [
+        {
+          "id": "square_curve",
+          "type": "line",
+          "x": "x",
+          "y": "x ** 2",
+          "title": "Square function",
+          "filename": "square_curve.png",
+          "claim_id": "square_nonnegative"
+        }
+      ]
+    }
+  },
+  "dataset_declarations": [],
+  "statement": "This record locks the declared scientific plan. It does not prove that the plan is valid, unbiased, or sufficient."
+}

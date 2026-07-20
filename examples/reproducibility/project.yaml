@@ -1,0 +1,47 @@
+project:
+  id: reproducibility-demo
+  title: FELRA v0.7 Preregistration and Replay Demo
+  language: en
+
+execution:
+  max_evaluations: 1001
+  random_samples: 1000
+  seed: 73
+  cache: false
+
+preregistration:
+  enabled: true
+  path: preregistration.json
+  mode: strict
+
+parameters:
+  x:
+    type: float
+    range: [-5, 5]
+    samples: 1001
+
+claims:
+  - id: square_nonnegative
+    statement: The square of every sampled x is non-negative.
+    expression: x ** 2 >= 0
+    status: hypothesis
+    required_checks: [numerical, boundaries, counterexample_search]
+
+analyses:
+  - id: square_sensitivity
+    type: sensitivity
+    title: Local sensitivity of x squared
+    expression: x ** 2
+    parameters: [x]
+    baseline: {x: 1.0}
+    claim_id: square_nonnegative
+
+outputs:
+  figures:
+    - id: square_curve
+      type: line
+      x: x
+      y: x ** 2
+      title: Square function
+      filename: square_curve.png
+      claim_id: square_nonnegative

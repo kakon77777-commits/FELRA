@@ -712,3 +712,74 @@ A FELRA synchronization task is done only when all applicable conditions are tru
 - [ ] JSON report produced.
 
 If any required item is false, report the synchronization as incomplete.
+
+---
+
+## 22. Archive filename portability policy
+
+All file and directory paths stored inside distributed ZIP archives must be ASCII-safe.
+
+Allowed archive-path character set:
+
+```text
+A-Z a-z 0-9 . _ - /
+```
+
+Human-facing document titles and contents may remain Chinese or multilingual, but their physical archive paths must use an ASCII language marker such as `zh-TW`.
+
+Example:
+
+```text
+Logical historical title:
+docs/GCPR-RWL-FELRA_技術白皮書_v1.0.md
+
+Portable physical archive path:
+docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md
+```
+
+Every renamed historical path must be declared in:
+
+```text
+ARCHIVE_FILENAME_MAP.json
+```
+
+When synchronizing a full source archive, the local Agent must:
+
+1. read `ARCHIVE_FILENAME_MAP.json`;
+2. copy the ASCII-safe physical path;
+3. remove a tracked legacy path only when the mapping explicitly names it;
+4. preserve file contents and Git history semantics;
+5. report every mapped rename.
+
+Before publishing an archive, verify:
+
+```text
+Every ZIP member path is ASCII-only.
+No mojibake member path exists.
+The source extracts successfully with Windows Expand-Archive.
+```
+
+Do not reintroduce non-ASCII physical paths into release archives, even if the local filesystem and Git support them.
+---
+
+## 23. Preregistration and replay integrity
+
+When a project enables preregistration:
+
+- never replace an existing preregistration record without explicit approval;
+- treat `strict` mismatches as a blocking scientific-plan change;
+- retain `preregistration_verification.json` in the evidence output;
+- do not edit a plan merely to force its fingerprint to match;
+- create a new preregistration record when an approved analysis plan changes.
+
+For release validation of v0.7 or later, run the reproducibility example and require:
+
+```text
+preregistration status = matched
+felra replay result = MATCH
+paper export manifest produced
+all provenance paths present
+```
+
+A matching replay fingerprint shows computational reproduction of the stored result payload. It does not establish scientific validity, external replication, or universal proof.
+

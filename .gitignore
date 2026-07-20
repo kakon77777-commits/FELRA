@@ -8,3 +8,9 @@ dist/
 *.egg-info/
 artifacts/
 .DS_Store
+
+.felra-cache/
+
+.felra-registry/
+
+.felra-preregistration/

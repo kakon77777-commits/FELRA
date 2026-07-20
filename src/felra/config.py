@@ -95,8 +95,8 @@ class DatasetSpec:
         if "path" not in data:
             raise ProjectConfigError(f"Dataset {dataset_id!r} requires a path")
         format_name = str(data.get("format", "csv")).lower()
-        if format_name != "csv":
-            raise ProjectConfigError("v0.4 supports CSV datasets only")
+        if format_name not in {"csv", "json", "jsonl"}:
+            raise ProjectConfigError("Dataset format must be csv, json, or jsonl")
         raw_columns = data.get("columns")
         if not isinstance(raw_columns, dict) or not raw_columns:
             raise ProjectConfigError(f"Dataset {dataset_id!r} requires a non-empty columns mapping")
@@ -213,6 +213,9 @@ class ExecutionSpec:
     max_evaluations: int = 200_000
     random_samples: int = 20_000
     seed: int = 42
+    cache: bool = False
+    cache_dir: str = ".felra-cache"
+    refresh_cache: bool = False
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any] | None) -> "ExecutionSpec":
@@ -221,10 +224,16 @@ class ExecutionSpec:
         random_samples = int(data.get("random_samples", 20_000))
         if max_evaluations < 1 or random_samples < 1:
             raise ProjectConfigError("Execution budgets must be positive")
+        cache_dir = str(data.get("cache_dir", ".felra-cache"))
+        if not cache_dir.strip():
+            raise ProjectConfigError("execution.cache_dir must not be empty")
         return cls(
             max_evaluations=max_evaluations,
             random_samples=random_samples,
             seed=int(data.get("seed", 42)),
+            cache=bool(data.get("cache", False)),
+            cache_dir=cache_dir,
+            refresh_cache=bool(data.get("refresh_cache", False)),
         )
 
 
@@ -310,6 +319,120 @@ class BootstrapCIAnalysisSpec(BaseAnalysisSpec):
     seed: int | None = None
 
 
+@dataclass(frozen=True)
+class PowerAnalysisSpec(BaseAnalysisSpec):
+    test: str = "one_sample_t"
+    effect_size: float = 0.5
+    alpha: float = 0.05
+    target_power: float | None = 0.8
+    sample_size: int | None = None
+    alternative: str = "two-sided"
+    allocation_ratio: float = 1.0
+    max_sample_size: int = 10000
+
+
+@dataclass(frozen=True)
+class RobustnessAnalysisSpec(BaseAnalysisSpec):
+    dataset: str = ""
+    statistic: str = "mean"
+    columns: tuple[str, ...] = ()
+    group_by: str | None = None
+    groups: tuple[str, ...] = ()
+    method: str = "bootstrap"
+    repetitions: int = 2000
+    fraction: float = 0.8
+    confidence: float = 0.95
+    seed: int | None = None
+    bins: int = 40
+
+
+@dataclass(frozen=True)
+class MultipleComparisonAnalysisSpec(BaseAnalysisSpec):
+    dataset: str = ""
+    column: str = ""
+    group_by: str = ""
+    groups: tuple[str, ...] = ()
+    comparisons: tuple[tuple[str, str], ...] = ()
+    test: str = "independent_t"
+    correction: str = "holm"
+    alpha: float = 0.05
+    alternative: str = "two-sided"
+    equal_var: bool = False
+
+
+@dataclass(frozen=True)
+class ModelCandidateSpec:
+    name: str
+    model: str = "linear"
+    degree: int = 1
+    standardize: bool = True
+
+
+@dataclass(frozen=True)
+class CrossValidationAnalysisSpec(BaseAnalysisSpec):
+    dataset: str = ""
+    target: str = ""
+    features: tuple[str, ...] = ()
+    model: str = "linear"
+    degree: int = 1
+    folds: int = 5
+    shuffle: bool = True
+    seed: int | None = None
+    standardize: bool = True
+
+
+@dataclass(frozen=True)
+class ModelComparisonAnalysisSpec(BaseAnalysisSpec):
+    dataset: str = ""
+    target: str = ""
+    features: tuple[str, ...] = ()
+    models: tuple[ModelCandidateSpec, ...] = ()
+    folds: int = 5
+    shuffle: bool = True
+    seed: int | None = None
+    primary_metric: str = "rmse"
+
+
+@dataclass(frozen=True)
+class PreregistrationSpec:
+    enabled: bool = False
+    path: str = ".felra-preregistration/preregistration.json"
+    mode: str = "warn"
+
+    @classmethod
+    def from_mapping(cls, data: dict[str, Any] | None) -> "PreregistrationSpec":
+        data = data or {}
+        path = str(data.get("path", ".felra-preregistration/preregistration.json"))
+        if not path.strip():
+            raise ProjectConfigError("preregistration.path must not be empty")
+        mode = str(data.get("mode", "warn"))
+        if mode not in {"warn", "strict"}:
+            raise ProjectConfigError("preregistration.mode must be warn or strict")
+        return cls(enabled=bool(data.get("enabled", False)), path=path, mode=mode)
+
+
+@dataclass(frozen=True)
+class RegistrySpec:
+    enabled: bool = False
+    path: str = ".felra-registry/registry.jsonl"
+    tags: tuple[str, ...] = ()
+    notes: str | None = None
+
+    @classmethod
+    def from_mapping(cls, data: dict[str, Any] | None) -> "RegistrySpec":
+        data = data or {}
+        path = str(data.get("path", ".felra-registry/registry.jsonl"))
+        if not path.strip():
+            raise ProjectConfigError("registry.path must not be empty")
+        tags = tuple(str(item) for item in data.get("tags", ()))
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            path=path,
+            tags=tags,
+            notes=str(data["notes"]) if data.get("notes") is not None else None,
+        )
+
+
 AnalysisSpec: TypeAlias = (
     SensitivityAnalysisSpec
     | ResidualAnalysisSpec
@@ -318,6 +441,11 @@ AnalysisSpec: TypeAlias = (
     | DescriptiveAnalysisSpec
     | HypothesisTestAnalysisSpec
     | BootstrapCIAnalysisSpec
+    | PowerAnalysisSpec
+    | RobustnessAnalysisSpec
+    | MultipleComparisonAnalysisSpec
+    | CrossValidationAnalysisSpec
+    | ModelComparisonAnalysisSpec
 )
 
 
@@ -507,9 +635,207 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             seed=int(data["seed"]) if data.get("seed") is not None else None,
         )
 
+
+    if kind == "power":
+        _require_fields(data, {"test", "effect_size"}, context=f"Analysis {analysis_id!r}")
+        test = str(data["test"])
+        if test not in {"one_sample_t", "paired_t", "independent_t", "correlation"}:
+            raise ProjectConfigError(f"Unsupported power-analysis test {test!r}")
+        effect_size = float(data["effect_size"])
+        if effect_size == 0:
+            raise ProjectConfigError("Power-analysis effect_size must be non-zero")
+        alternative = str(data.get("alternative", "two-sided"))
+        if alternative not in {"two-sided", "less", "greater"}:
+            raise ProjectConfigError("alternative must be two-sided, less, or greater")
+        target_power_raw = data.get("target_power")
+        sample_size_raw = data.get("sample_size")
+        if target_power_raw is None and sample_size_raw is None:
+            target_power_raw = 0.8
+        target_power = (
+            None if target_power_raw is None else _probability(target_power_raw, field_name="target_power")
+        )
+        sample_size = None if sample_size_raw is None else int(sample_size_raw)
+        if sample_size is not None and sample_size < 2:
+            raise ProjectConfigError("Power-analysis sample_size must be at least 2")
+        allocation_ratio = float(data.get("allocation_ratio", 1.0))
+        if allocation_ratio <= 0:
+            raise ProjectConfigError("allocation_ratio must be positive")
+        max_sample_size = int(data.get("max_sample_size", 10000))
+        if max_sample_size < 4:
+            raise ProjectConfigError("max_sample_size must be at least 4")
+        return PowerAnalysisSpec(
+            **base,
+            test=test,
+            effect_size=effect_size,
+            alpha=_probability(data.get("alpha", 0.05), field_name="alpha"),
+            target_power=target_power,
+            sample_size=sample_size,
+            alternative=alternative,
+            allocation_ratio=allocation_ratio,
+            max_sample_size=max_sample_size,
+        )
+
+    if kind == "robustness":
+        _require_fields(data, {"dataset", "statistic", "columns"}, context=f"Analysis {analysis_id!r}")
+        statistic = str(data["statistic"])
+        if statistic not in {"mean", "median", "std", "correlation", "mean_difference"}:
+            raise ProjectConfigError(f"Unsupported robustness statistic {statistic!r}")
+        columns = tuple(str(item) for item in data["columns"])
+        required_columns = 2 if statistic == "correlation" else 1
+        if len(columns) != required_columns:
+            raise ProjectConfigError(
+                f"Robustness statistic {statistic!r} requires {required_columns} column(s)"
+            )
+        group_by = str(data["group_by"]) if data.get("group_by") else None
+        groups = tuple(str(item) for item in data.get("groups", ()))
+        if statistic == "mean_difference" and (group_by is None or len(groups) != 2):
+            raise ProjectConfigError("mean_difference requires group_by and exactly two groups")
+        method = str(data.get("method", "bootstrap"))
+        if method not in {"bootstrap", "subsample"}:
+            raise ProjectConfigError("Robustness method must be bootstrap or subsample")
+        repetitions = int(data.get("repetitions", 2000))
+        if repetitions < 100:
+            raise ProjectConfigError("Robustness repetitions must be at least 100")
+        fraction = float(data.get("fraction", 0.8))
+        if not 0.0 < fraction <= 1.0:
+            raise ProjectConfigError("Robustness fraction must be in (0, 1]")
+        bins = int(data.get("bins", 40))
+        if bins < 1:
+            raise ProjectConfigError("Robustness bins must be positive")
+        return RobustnessAnalysisSpec(
+            **base,
+            dataset=str(data["dataset"]),
+            statistic=statistic,
+            columns=columns,
+            group_by=group_by,
+            groups=groups,
+            method=method,
+            repetitions=repetitions,
+            fraction=fraction,
+            confidence=_probability(data.get("confidence", 0.95), field_name="confidence"),
+            seed=int(data["seed"]) if data.get("seed") is not None else None,
+            bins=bins,
+        )
+
+
+    if kind == "multiple_comparisons":
+        _require_fields(
+            data, {"dataset", "column", "group_by"}, context=f"Analysis {analysis_id!r}"
+        )
+        test = str(data.get("test", "independent_t"))
+        if test not in {"independent_t", "mann_whitney"}:
+            raise ProjectConfigError("multiple_comparisons test must be independent_t or mann_whitney")
+        correction = str(data.get("correction", "holm"))
+        if correction not in {"none", "bonferroni", "holm", "fdr_bh"}:
+            raise ProjectConfigError("correction must be none, bonferroni, holm, or fdr_bh")
+        alternative = str(data.get("alternative", "two-sided"))
+        if alternative not in {"two-sided", "less", "greater"}:
+            raise ProjectConfigError("alternative must be two-sided, less, or greater")
+        raw_comparisons = data.get("comparisons", ())
+        comparisons: list[tuple[str, str]] = []
+        for item in raw_comparisons:
+            if not isinstance(item, (list, tuple)) or len(item) != 2:
+                raise ProjectConfigError("Each comparison must contain exactly two group names")
+            comparisons.append((str(item[0]), str(item[1])))
+        return MultipleComparisonAnalysisSpec(
+            **base,
+            dataset=str(data["dataset"]),
+            column=str(data["column"]),
+            group_by=str(data["group_by"]),
+            groups=tuple(str(item) for item in data.get("groups", ())),
+            comparisons=tuple(comparisons),
+            test=test,
+            correction=correction,
+            alpha=_probability(data.get("alpha", 0.05), field_name="alpha"),
+            alternative=alternative,
+            equal_var=bool(data.get("equal_var", False)),
+        )
+
+    if kind == "cross_validation":
+        _require_fields(
+            data, {"dataset", "target", "features"}, context=f"Analysis {analysis_id!r}"
+        )
+        features = tuple(str(item) for item in data["features"])
+        if not features:
+            raise ProjectConfigError("cross_validation requires at least one feature")
+        model = str(data.get("model", "linear"))
+        if model not in {"linear", "polynomial"}:
+            raise ProjectConfigError("cross_validation model must be linear or polynomial")
+        degree = int(data.get("degree", 1))
+        if degree < 1:
+            raise ProjectConfigError("cross_validation degree must be at least 1")
+        folds = int(data.get("folds", 5))
+        if folds < 2:
+            raise ProjectConfigError("cross_validation folds must be at least 2")
+        return CrossValidationAnalysisSpec(
+            **base,
+            dataset=str(data["dataset"]),
+            target=str(data["target"]),
+            features=features,
+            model=model,
+            degree=degree,
+            folds=folds,
+            shuffle=bool(data.get("shuffle", True)),
+            seed=int(data["seed"]) if data.get("seed") is not None else None,
+            standardize=bool(data.get("standardize", True)),
+        )
+
+    if kind == "model_comparison":
+        _require_fields(
+            data, {"dataset", "target", "features", "models"},
+            context=f"Analysis {analysis_id!r}",
+        )
+        features = tuple(str(item) for item in data["features"])
+        if not features:
+            raise ProjectConfigError("model_comparison requires at least one feature")
+        raw_models = data["models"]
+        if not isinstance(raw_models, list) or len(raw_models) < 2:
+            raise ProjectConfigError("model_comparison requires at least two model candidates")
+        models: list[ModelCandidateSpec] = []
+        names: list[str] = []
+        for index_model, item in enumerate(raw_models, start=1):
+            if not isinstance(item, dict):
+                raise ProjectConfigError("model candidates must be mappings")
+            model = str(item.get("type", "linear"))
+            if model not in {"linear", "polynomial"}:
+                raise ProjectConfigError("model candidate type must be linear or polynomial")
+            degree = int(item.get("degree", 1))
+            if degree < 1:
+                raise ProjectConfigError("model candidate degree must be at least 1")
+            name = str(item.get("name", f"model_{index_model:02d}"))
+            names.append(name)
+            models.append(
+                ModelCandidateSpec(
+                    name=name,
+                    model=model,
+                    degree=degree,
+                    standardize=bool(item.get("standardize", True)),
+                )
+            )
+        if len(names) != len(set(names)):
+            raise ProjectConfigError("model candidate names must be unique")
+        folds = int(data.get("folds", 5))
+        if folds < 2:
+            raise ProjectConfigError("model_comparison folds must be at least 2")
+        primary_metric = str(data.get("primary_metric", "rmse"))
+        if primary_metric not in {"rmse", "mae", "r2"}:
+            raise ProjectConfigError("primary_metric must be rmse, mae, or r2")
+        return ModelComparisonAnalysisSpec(
+            **base,
+            dataset=str(data["dataset"]),
+            target=str(data["target"]),
+            features=features,
+            models=tuple(models),
+            folds=folds,
+            shuffle=bool(data.get("shuffle", True)),
+            seed=int(data["seed"]) if data.get("seed") is not None else None,
+            primary_metric=primary_metric,
+        )
+
     raise ProjectConfigError(
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
-        "pareto, descriptive, hypothesis_test, or bootstrap_ci"
+        "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
+        "multiple_comparisons, cross_validation, or model_comparison"
     )
 
 
@@ -524,6 +850,8 @@ class ProjectSpec:
     figures: tuple[FigureSpec, ...] = ()
     analyses: tuple[AnalysisSpec, ...] = ()
     execution: ExecutionSpec = field(default_factory=ExecutionSpec)
+    registry: RegistrySpec = field(default_factory=RegistrySpec)
+    preregistration: PreregistrationSpec = field(default_factory=PreregistrationSpec)
     source_path: Path | None = None
     raw: dict[str, Any] = field(default_factory=dict, compare=False)
 
@@ -548,7 +876,15 @@ def _validate_analysis_references(project: ProjectSpec) -> None:
             )
         if isinstance(
             analysis,
-            (DescriptiveAnalysisSpec, HypothesisTestAnalysisSpec, BootstrapCIAnalysisSpec),
+            (
+                DescriptiveAnalysisSpec,
+                HypothesisTestAnalysisSpec,
+                BootstrapCIAnalysisSpec,
+                RobustnessAnalysisSpec,
+                MultipleComparisonAnalysisSpec,
+                CrossValidationAnalysisSpec,
+                ModelComparisonAnalysisSpec,
+            ),
         ):
             if analysis.dataset not in project.datasets:
                 raise ProjectConfigError(
@@ -567,8 +903,18 @@ def _validate_analysis_references(project: ProjectSpec) -> None:
                     referenced.add(analysis.column)
                 if analysis.group_by:
                     referenced.add(analysis.group_by)
-            else:
+            elif isinstance(analysis, BootstrapCIAnalysisSpec):
                 referenced.add(analysis.column)
+            elif isinstance(analysis, RobustnessAnalysisSpec):
+                referenced.update(analysis.columns)
+                if analysis.group_by:
+                    referenced.add(analysis.group_by)
+            elif isinstance(analysis, MultipleComparisonAnalysisSpec):
+                referenced.add(analysis.column)
+                referenced.add(analysis.group_by)
+            else:
+                referenced.update(analysis.features)
+                referenced.add(analysis.target)
             unknown = sorted(referenced.difference(dataset_columns))
             if unknown:
                 raise ProjectConfigError(
@@ -683,6 +1029,8 @@ def load_project(path: str | Path) -> ProjectSpec:
         figures=figures,
         analyses=analyses,
         execution=ExecutionSpec.from_mapping(raw.get("execution")),
+        registry=RegistrySpec.from_mapping(raw.get("registry")),
+        preregistration=PreregistrationSpec.from_mapping(raw.get("preregistration")),
         source_path=source.resolve(),
         raw=raw,
     )

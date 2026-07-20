@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -108,61 +109,98 @@ def _column_array(values: list[Any], kind: str) -> np.ndarray:
     return np.asarray(values, dtype=object)
 
 
+def _open_text(path: Path, *, encoding: str):
+    if path.suffix.lower() == ".gz":
+        return gzip.open(path, "rt", encoding=encoding, newline="")
+    return path.open("r", encoding=encoding, newline="")
+
+
+def _read_raw_rows(spec: DatasetSpec) -> list[dict[str, Any]]:
+    path = spec.path
+    if spec.format == "csv":
+        with _open_text(path, encoding=spec.encoding) as handle:
+            reader = csv.DictReader(handle, delimiter=spec.delimiter)
+            if reader.fieldnames is None:
+                raise DatasetLoadError(f"Dataset {spec.dataset_id!r} has no header")
+            absent = sorted(set(spec.columns).difference(reader.fieldnames))
+            if absent:
+                raise DatasetLoadError(
+                    f"Dataset {spec.dataset_id!r} is missing declared columns: {', '.join(absent)}"
+                )
+            return [dict(row) for row in reader]
+    if spec.format == "json":
+        with _open_text(path, encoding=spec.encoding) as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            raise DatasetLoadError(
+                f"Dataset {spec.dataset_id!r} JSON root must be a list of objects"
+            )
+        return [dict(item) for item in payload]
+    if spec.format == "jsonl":
+        rows: list[dict[str, Any]] = []
+        with _open_text(path, encoding=spec.encoding) as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise DatasetLoadError(
+                        f"Dataset {spec.dataset_id!r} JSONL line {line_number} is invalid: {exc}"
+                    ) from exc
+                if not isinstance(item, dict):
+                    raise DatasetLoadError(
+                        f"Dataset {spec.dataset_id!r} JSONL line {line_number} must be an object"
+                    )
+                rows.append(dict(item))
+        return rows
+    raise DatasetLoadError(f"Unsupported dataset format {spec.format!r}")
+
+
 def load_dataset(spec: DatasetSpec) -> Dataset:
     path = spec.path
     if not path.exists():
         raise FileNotFoundError(path)
-    if spec.format != "csv":
-        raise DatasetLoadError(f"Unsupported dataset format {spec.format!r}")
 
     missing_tokens = {token.strip().lower() for token in spec.missing_values}
     missing_by_column = {name: 0 for name in spec.columns}
     invalid_by_column = {name: 0 for name in spec.columns}
     accepted_rows: list[dict[str, Any]] = []
-    total_rows = 0
     dropped_rows = 0
+    raw_rows = _read_raw_rows(spec)
+    total_rows = len(raw_rows)
 
-    with path.open("r", encoding=spec.encoding, newline="") as handle:
-        reader = csv.DictReader(handle, delimiter=spec.delimiter)
-        if reader.fieldnames is None:
-            raise DatasetLoadError(f"Dataset {spec.dataset_id!r} has no header")
-        absent = sorted(set(spec.columns).difference(reader.fieldnames))
-        if absent:
-            raise DatasetLoadError(
-                f"Dataset {spec.dataset_id!r} is missing declared columns: {', '.join(absent)}"
-            )
+    for row_number, raw_row in enumerate(raw_rows, start=1):
+        converted: dict[str, Any] = {}
+        row_has_required_problem = False
+        for name, column_spec in spec.columns.items():
+            raw_value = raw_row.get(name)
+            raw_text = None if raw_value is None else str(raw_value)
+            if _is_missing(raw_text, missing_tokens):
+                missing_by_column[name] += 1
+                if column_spec.required:
+                    row_has_required_problem = True
+                converted[name] = _missing_value(column_spec.kind)
+                continue
+            assert raw_text is not None
+            try:
+                converted[name] = _convert(raw_text.strip(), column_spec.kind)
+            except (TypeError, ValueError):
+                invalid_by_column[name] += 1
+                if column_spec.required:
+                    row_has_required_problem = True
+                converted[name] = _missing_value(column_spec.kind)
 
-        for raw_row in reader:
-            total_rows += 1
-            converted: dict[str, Any] = {}
-            row_has_required_problem = False
-            for name, column_spec in spec.columns.items():
-                raw_value = raw_row.get(name)
-                if _is_missing(raw_value, missing_tokens):
-                    missing_by_column[name] += 1
-                    if column_spec.required:
-                        row_has_required_problem = True
-                    converted[name] = _missing_value(column_spec.kind)
-                    continue
-                assert raw_value is not None
-                try:
-                    converted[name] = _convert(raw_value.strip(), column_spec.kind)
-                except (TypeError, ValueError):
-                    invalid_by_column[name] += 1
-                    if column_spec.required:
-                        row_has_required_problem = True
-                    converted[name] = _missing_value(column_spec.kind)
-
-            if row_has_required_problem:
-                if spec.on_error == "error":
-                    raise DatasetLoadError(
-                        f"Dataset {spec.dataset_id!r} row {total_rows} contains missing or invalid "
-                        "required values"
-                    )
-                if spec.on_error == "drop":
-                    dropped_rows += 1
-                    continue
-            accepted_rows.append(converted)
+        if row_has_required_problem:
+            if spec.on_error == "error":
+                raise DatasetLoadError(
+                    f"Dataset {spec.dataset_id!r} row {row_number} contains missing or invalid "
+                    "required values"
+                )
+            if spec.on_error == "drop":
+                dropped_rows += 1
+                continue
+        accepted_rows.append(converted)
 
     if not accepted_rows:
         raise DatasetLoadError(f"Dataset {spec.dataset_id!r} contains no usable rows")
@@ -174,9 +212,7 @@ def load_dataset(spec: DatasetSpec) -> Dataset:
     duplicate_rows = len(accepted_rows) - len(
         {
             tuple(
-                None
-                if isinstance(row[name], float) and np.isnan(row[name])
-                else row[name]
+                None if isinstance(row[name], float) and np.isnan(row[name]) else row[name]
                 for name in spec.columns
             )
             for row in accepted_rows
@@ -232,6 +268,7 @@ def write_dataset_evidence(dataset: Dataset, output_root: Path) -> list[str]:
         f"# FELRA Dataset Report — {dataset.spec.dataset_id}",
         "",
         f"- Source: `{dataset.spec.path}`",
+        f"- Format: `{dataset.spec.format}`",
         f"- SHA-256: `{dataset.quality.source_sha256}`",
         f"- Rows read: `{dataset.quality.total_rows}`",
         f"- Rows loaded: `{dataset.quality.loaded_rows}`",

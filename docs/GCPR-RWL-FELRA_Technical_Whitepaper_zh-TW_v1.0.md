@@ -2004,3 +2004,97 @@ $$
 $H_{\mathrm{source}}$ 是來源 SHA-256，$\Sigma_{\mathrm{column}}$ 是欄位型別與必要性契約，$Q$ 是缺失、無效、丟棄與重複資料品質向量，$\Pi_{\mathrm{normalize}}$ 則是從來源檔案到可計算陣列的確定性投影。
 
 統計模組不把顯著性等同於真理。對虛無假設 $H_0$，輸出 `reject_null` 只表示在指定 $\alpha$、檢定模型及樣本條件下觀測到相應證據；它不自動建立因果性、外部效度或研究設計的正確性。重複實驗則用不同偽隨機種子測量有限計算程序的穩定性，並不替代真正的獨立資料重複與實驗重現。
+
+---
+
+## 附錄：FELRA-PyLab v0.5 的功效—穩健性—快取層
+
+v0.5 在既有資料與統計層上加入三個相互連結的研究機制：前瞻性功效分析、重抽樣穩健性分析，以及內容定址的分析證據快取。
+
+其擴充證據結構可寫為：
+
+$$
+\mathcal E_{0.5}
+=
+\mathcal E_{0.4}
+\oplus
+\mathcal P_{\mathrm{power}}
+\oplus
+\mathcal R_{\mathrm{robust}}
+\oplus
+\mathcal C_{\mathrm{hash}}.
+$$
+
+其中：
+
+- $\mathcal P_{\mathrm{power}}$ 對效果量、顯著水準、樣本數與檢定方向建立條件式功效曲線；
+- $\mathcal R_{\mathrm{robust}}$ 以 Bootstrap 或無放回子樣本重複估計統計量，測量其分布、符號穩定性與相對離散程度；
+- $\mathcal C_{\mathrm{hash}}$ 以 FELRA 版本、分析規格、專案設定、資料來源雜湊與隨機種子形成內容指紋，只在完整條件一致時重用證據。
+
+因此快取命中不是「相信舊結果」，而是下式成立時的確定性重用：
+
+$$
+H(S_{\mathrm{old}})=H(S_{\mathrm{new}}).
+$$
+
+若任一資料、規格、版本或種子改變，則產生新的證據節點，不覆寫原始研究條件。
+
+v0.5 同時將外部資料格式擴充為 CSV、JSON 與 JSONL，但三者必須通過同一欄位契約與正規化證據流程。這維持了「來源格式可以多樣，證據語義必須一致」的 FELRA 原則。
+
+
+---
+
+## 附錄：FELRA-PyLab v0.6 的比較、預測與實驗註冊層
+
+FELRA v0.6 將單次統計輸出擴展為比較族、效應量、預測驗證、模型選擇與實驗索引：
+
+$$
+\mathcal E_{0.6}=\mathcal E_{0.5}\oplus\mathcal M_c\oplus\mathcal E_s\oplus\mathcal C_v\oplus\mathcal M_s\oplus\mathcal R_e.
+$$
+
+多重比較的校正域由單一分析區塊明確聲明。交叉驗證只以訓練折估計標準化參數，並保存 out-of-fold 預測。模型比較強制共享折次，以避免切分差異被誤認為模型差異。實驗註冊表則把設定雜湊、資料雜湊、版本、結果、快取狀態與警告連接成可搜尋的執行歷史。
+
+這些結果仍屬有限資料上的計算證據。模型排名不等於真實機制識別；校正後顯著性不建立因果；本地 JSONL 註冊也不等於不可竄改的正式預註冊。
+
+---
+
+## 附錄：FELRA v0.7 預註冊—溯源—重播治理層
+
+FELRA v0.7 在 Python 驗證、統計分析與模型比較之上加入研究治理閉環：
+
+$$
+	ext{計畫預註冊}
+\rightarrow
+	ext{執行鎖定}
+\rightarrow
+	ext{證據溯源圖}
+\rightarrow
+	ext{科學結果指紋}
+\rightarrow
+	ext{獨立重播}
+\rightarrow
+	ext{論文級匯出}.
+$$
+
+預註冊鎖定的是「聲明過的研究計畫」，而不是宣告理論必然正確；重播驗證的是結果負載是否可由保存的正規化資料與計畫再次產生，而不是宣告外部世界已完成獨立重現。
+
+令研究計畫的正規形式為 $\mathcal P$，FELRA 建立：
+
+$$
+H_{\mathcal P}=\operatorname{SHA256}(\operatorname{Canonical}(\mathcal P)).
+$$
+
+執行結果則由資料投影、命題結果與分析指標構成：
+
+$$
+H_{\mathcal E}
+=
+\operatorname{SHA256}
+\left(
+D_{\mathrm{normalized}},
+V_{\mathrm{claims}},
+M_{\mathrm{analyses}}
+\right).
+$$
+
+因此，v0.7 將「我執行過」提升為可檢查的五元證據：計畫是否鎖定、執行是否偏離、證據從何產生、結果指紋為何、能否重播一致。

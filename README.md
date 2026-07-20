@@ -19,21 +19,32 @@ $$
 \text{SMT／Lean／RWL}.
 $$
 
-目前版本：**v0.4.0 — Data, Statistics & Replication Pipeline**
+目前版本：**v0.7.0 — Preregistration, Provenance, Replay & Paper Export**
 
 ## 核心能力
 
 - 宣告式 `project.yaml` 與安全 AST 數值表達式；
 - 有限宣告網格、邊界檢查與隨機反例搜索；
-- CSV 欄位契約、缺失／無效值處理、來源雜湊與正規化快照；
+- CSV／JSON／JSONL 欄位契約、缺失／無效值處理、來源雜湊與正規化快照；
 - 對整份資料逐列執行經驗命題；
 - 描述統計與 Student-$t$ 平均值信賴區間；
 - 單樣本、獨立樣本、成對樣本與無母數檢定；
 - Pearson／Spearman 相關分析；
 - 固定種子的百分位 Bootstrap 信賴區間；
+- 單樣本、成對、獨立樣本與相關分析的統計功效曲線；
+- Bootstrap／子樣本重抽樣穩健性、符號穩定度與分布證據；
+- 依專案、分析、資料雜湊與種子建立的內容定址分析快取；
+- Bonferroni、Holm 與 Benjamini–Hochberg 多重比較校正；
+- 具名稱的 Cohen/Hedges、rank-biserial 與相關效應量；
+- 數值迴歸交叉驗證、out-of-fold 預測與共享折次模型比較；
+- 附加式 JSONL 研究實驗註冊表與 `felra registry` 查詢；
 - 敏感度、殘差、參數掃描與雙目標 Pareto 前沿；
 - 重複實驗、種子展開與多程序並行批次；
 - CSV、JSON、Markdown、PNG／SVG／PDF 證據包。
+- 科學計畫預註冊與 `warn`／`strict` 執行鎖定；
+- Claim、資料、分析、圖形與報告的 JSON／DOT／SVG 證據溯源圖；
+- 科學結果 SHA-256 指紋與 `felra replay` 獨立重播；
+- `felra export` 論文級 Methods、Results、Limitations、CITATION 與檔案雜湊包；
 
 ## 安裝
 
@@ -62,7 +73,14 @@ felra run my-theory/project.yaml --output my-theory/artifacts/run
 felra run examples/basic/project.yaml --output artifacts/basic
 felra run examples/advanced/project.yaml --output artifacts/advanced
 felra run examples/data/project.yaml --output artifacts/data
+felra run examples/robustness/project.yaml --output artifacts/robustness
+felra run examples/research_registry/project.yaml --output artifacts/research-registry
+felra registry examples/research_registry/.felra-registry/research_runs.jsonl --limit 10
 felra batch examples/repeated_batch/batch.yaml --output artifacts/repeated --workers 2
+felra preregister examples/reproducibility/project.yaml --output examples/reproducibility/preregistration.json
+felra run examples/reproducibility/project.yaml --output artifacts/reproducibility
+felra replay artifacts/reproducibility --output artifacts/replay
+felra export artifacts/reproducibility --output artifacts/paper-bundle
 ```
 
 ## 外部資料規格
@@ -156,6 +174,103 @@ $$
 
 FELRA 保存重抽樣分布、種子、估計量、標準誤與百分位數上下界。
 
+
+## 功效、穩健性與快取
+
+```yaml
+execution:
+  cache: true
+  cache_dir: .felra-cache
+
+analyses:
+  - id: power_plan
+    type: power
+    test: independent_t
+    effect_size: 0.6
+    alpha: 0.05
+    target_power: 0.8
+
+  - id: robust_effect
+    type: robustness
+    dataset: trial
+    statistic: mean_difference
+    columns: [score]
+    group_by: group
+    groups: [control, treatment]
+    method: bootstrap
+    repetitions: 2000
+```
+
+第二次執行完全相同的分析時，`metrics.json` 會記錄 `cache_hit: true`。任何專案內容、資料來源雜湊、分析規格、FELRA 版本或執行種子的變化都會產生不同指紋。
+
+## 多重比較、交叉驗證與模型註冊
+
+```yaml
+registry:
+  enabled: true
+  path: .felra-registry/research_runs.jsonl
+  tags: [paper-01, synthetic]
+
+analyses:
+  - id: corrected_groups
+    type: multiple_comparisons
+    dataset: study
+    column: score
+    group_by: group
+    groups: [baseline, method_a, method_b]
+    correction: holm
+
+  - id: compare_models
+    type: model_comparison
+    dataset: study
+    target: y
+    features: [x, z]
+    folds: 5
+    primary_metric: rmse
+    models:
+      - {name: linear, type: linear}
+      - {name: quadratic, type: polynomial, degree: 2}
+```
+
+所有候選模型使用相同折次與種子。模型排名屬探索性選擇；確認性性能估計仍應使用巢狀交叉驗證或獨立測試集。
+
+## 預註冊、溯源與重播
+
+```yaml
+preregistration:
+  enabled: true
+  path: preregistration.json
+  mode: strict
+```
+
+先建立不可覆寫的研究計畫紀錄：
+
+```bash
+felra preregister project.yaml --output preregistration.json
+felra verify-preregistration project.yaml --record preregistration.json
+```
+
+`strict` 模式下，只要參數域、命題、分析、資料宣告或種子等科學計畫發生改變，執行就會停止；`warn` 模式則保留偏離紀錄並繼續。快取路徑、Registry 路徑等純操作設定不納入計畫指紋。
+
+每次執行都會輸出：
+
+```text
+provenance/provenance.json
+provenance/provenance.dot
+provenance/provenance.svg
+replay_project.yaml
+manifest.json  # 包含 result_sha256
+```
+
+重播與論文匯出：
+
+```bash
+felra replay artifacts/run --output artifacts/replay
+felra export artifacts/run --output artifacts/paper-bundle
+```
+
+重播成功只表示在目前軟體與浮點環境中取得同一科學結果指紋，不等同於跨平台位元級一致，也不證明研究設計正確。
+
 ## 重複與並行批次
 
 ```yaml
@@ -219,10 +334,12 @@ python -m compileall -q src tests
 
 規格文件：
 
-- `docs/PROJECT_SPEC_v0.4.md`
+- `docs/PROJECT_SPEC_v0.6.md`
+- `docs/MODEL_SELECTION_REGISTRY_v0.6.md`
+- `docs/POWER_ROBUSTNESS_CACHE_v0.5.md`
 - `docs/DATA_STATISTICS_PIPELINE_v0.4.md`
 - `docs/BATCH_REPLICATION_v0.4.md`
-- `schema/project-v0.4.schema.json`
-- `schema/batch-v0.4.schema.json`
+- `schema/project-v0.6.schema.json`
+- `schema/batch-v0.5.schema.json`
 
-完整理論設計見 `docs/GCPR-RWL-FELRA_技術白皮書_v1.0.md`。
+完整理論設計見 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md`。

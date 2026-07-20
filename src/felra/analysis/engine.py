@@ -4,21 +4,31 @@ import json
 from pathlib import Path
 
 from felra.analysis.bootstrap import run_bootstrap_ci
+from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
 from felra.analysis.models import AnalysisResult
+from felra.analysis.multiple_comparisons import run_multiple_comparisons
 from felra.analysis.pareto import run_pareto
+from felra.analysis.power import run_power_analysis
 from felra.analysis.residual import run_residual
+from felra.analysis.robustness import run_robustness
 from felra.analysis.sensitivity import run_sensitivity
 from felra.analysis.statistics import run_descriptive, run_hypothesis_test
 from felra.analysis.sweep import run_sweep
 from felra.analysis.utils import jsonable
+from felra.cache import AnalysisCache, analysis_fingerprint
 from felra.config import (
     AnalysisSpec,
     BootstrapCIAnalysisSpec,
+    CrossValidationAnalysisSpec,
     DescriptiveAnalysisSpec,
     HypothesisTestAnalysisSpec,
+    ModelComparisonAnalysisSpec,
+    MultipleComparisonAnalysisSpec,
     ParetoAnalysisSpec,
+    PowerAnalysisSpec,
     ProjectSpec,
     ResidualAnalysisSpec,
+    RobustnessAnalysisSpec,
     SensitivityAnalysisSpec,
     SweepAnalysisSpec,
 )
@@ -77,9 +87,16 @@ def run_analysis(
     project: ProjectSpec,
     output_root: Path,
     datasets: dict[str, Dataset] | None = None,
+    cache: AnalysisCache | None = None,
 ) -> AnalysisResult:
     output_dir = output_root / "analyses" / spec.analysis_id
     datasets = datasets or {}
+    fingerprint = analysis_fingerprint(spec, project, datasets)
+    if cache is not None:
+        restored = cache.restore(fingerprint, output_dir)
+        if restored is not None:
+            _write_result(restored, output_dir)
+            return restored
     try:
         if isinstance(spec, SensitivityAnalysisSpec):
             result = run_sensitivity(spec, project, output_dir, output_root)
@@ -101,6 +118,36 @@ def run_analysis(
                 output_root,
                 default_seed=project.execution.seed,
             )
+        elif isinstance(spec, PowerAnalysisSpec):
+            result = run_power_analysis(spec, output_dir, output_root)
+        elif isinstance(spec, RobustnessAnalysisSpec):
+            result = run_robustness(
+                spec,
+                datasets[spec.dataset],
+                output_dir,
+                output_root,
+                default_seed=project.execution.seed,
+            )
+        elif isinstance(spec, MultipleComparisonAnalysisSpec):
+            result = run_multiple_comparisons(
+                spec, datasets[spec.dataset], output_dir, output_root
+            )
+        elif isinstance(spec, CrossValidationAnalysisSpec):
+            result = run_cross_validation(
+                spec,
+                datasets[spec.dataset],
+                output_dir,
+                output_root,
+                default_seed=project.execution.seed,
+            )
+        elif isinstance(spec, ModelComparisonAnalysisSpec):
+            result = run_model_comparison(
+                spec,
+                datasets[spec.dataset],
+                output_dir,
+                output_root,
+                default_seed=project.execution.seed,
+            )
         else:  # pragma: no cover - exhaustive type guard
             raise TypeError(f"Unsupported analysis spec {type(spec).__name__}")
     except Exception as exc:
@@ -114,6 +161,8 @@ def run_analysis(
             warnings=[f"{type(exc).__name__}: {exc}"],
             claim_id=spec.claim_id,
         )
+    result.metrics.setdefault("cache_hit", False)
+    result.metrics.setdefault("cache_fingerprint", fingerprint)
     _write_result(result, output_dir)
     report_path = str((output_dir / "analysis_report.md").relative_to(output_root))
     metrics_path = str((output_dir / "metrics.json").relative_to(output_root))
@@ -122,4 +171,6 @@ def run_analysis(
             result.artifacts.insert(0, path)
     # Rewrite once so the artifact index includes the report and metrics files themselves.
     _write_result(result, output_dir)
+    if cache is not None:
+        cache.store(fingerprint, output_dir)
     return result

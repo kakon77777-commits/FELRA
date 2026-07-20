@@ -7,6 +7,13 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
+from felra.analysis.effect import (
+    independent_effect_sizes,
+    mann_whitney_rank_biserial,
+    one_sample_effect_sizes,
+    paired_effect_sizes,
+    wilcoxon_rank_biserial,
+)
 from felra.analysis.models import AnalysisResult
 from felra.analysis.utils import write_csv
 from felra.config import DescriptiveAnalysisSpec, HypothesisTestAnalysisSpec
@@ -156,14 +163,6 @@ def run_descriptive(
     )
 
 
-def _cohen_d_independent(x: np.ndarray, y: np.ndarray) -> float:
-    if x.size < 2 or y.size < 2:
-        return math.nan
-    pooled_numerator = (x.size - 1) * np.var(x, ddof=1) + (y.size - 1) * np.var(y, ddof=1)
-    pooled = math.sqrt(pooled_numerator / (x.size + y.size - 2))
-    return float((np.mean(x) - np.mean(y)) / pooled) if pooled else math.nan
-
-
 def run_hypothesis_test(
     spec: HypothesisTestAnalysisSpec,
     dataset: Dataset,
@@ -176,6 +175,7 @@ def run_hypothesis_test(
     statistic: float
     pvalue: float
     effect_size: float | None = None
+    effect_sizes: dict[str, float] = {}
     sample_sizes: dict[str, int] = {}
     figures: list[str] = []
     warnings: list[str] = []
@@ -186,7 +186,8 @@ def run_hypothesis_test(
         x = _numeric(dataset, spec.column)
         result = stats.ttest_1samp(x, popmean=spec.mu, alternative=spec.alternative)
         statistic, pvalue = float(result.statistic), float(result.pvalue)
-        effect_size = float((np.mean(x) - spec.mu) / np.std(x, ddof=1)) if x.size > 1 else math.nan
+        effect_sizes = one_sample_effect_sizes(x, spec.mu)
+        effect_size = effect_sizes["hedges_g"]
         sample_sizes = {spec.column: int(x.size)}
         figure = factory.histogram(
             x,
@@ -219,11 +220,15 @@ def run_hypothesis_test(
                 equal_var=spec.equal_var,
                 alternative=spec.alternative,
             )
-            effect_size = _cohen_d_independent(x, y)
+            effect_sizes = independent_effect_sizes(x, y)
+            effect_size = effect_sizes["hedges_g"]
             warnings.append("Normality and variance assumptions are not automatically certified.")
         else:
             result = stats.mannwhitneyu(x, y, alternative=spec.alternative)
-            effect_size = float(1.0 - (2.0 * float(result.statistic)) / (x.size * y.size))
+            effect_size = mann_whitney_rank_biserial(
+                float(result.statistic), x.size, y.size
+            )
+            effect_sizes = {"rank_biserial": effect_size}
         statistic, pvalue = float(result.statistic), float(result.pvalue)
         figure = factory.grouped_boxplot(
             groups,
@@ -243,21 +248,21 @@ def run_hypothesis_test(
         sample_sizes = {"pairs": int(x.size)}
         if test == "paired_t":
             result = stats.ttest_rel(x, y, alternative=spec.alternative)
-            difference = x - y
-            effect_size = (
-                float(np.mean(difference) / np.std(difference, ddof=1))
-                if difference.size > 1 and np.std(difference, ddof=1)
-                else math.nan
-            )
+            effect_sizes = paired_effect_sizes(x, y)
+            effect_size = effect_sizes["hedges_gz"]
             warnings.append("Normality of paired differences is not automatically certified.")
         elif test == "wilcoxon":
             result = stats.wilcoxon(x, y, alternative=spec.alternative)
+            effect_size = wilcoxon_rank_biserial(x, y)
+            effect_sizes = {"matched_rank_biserial": effect_size}
         elif test == "pearson":
             result = stats.pearsonr(x, y, alternative=spec.alternative)
             effect_size = float(result.statistic)
+            effect_sizes = {"pearson_r": effect_size}
         else:
             result = stats.spearmanr(x, y, alternative=spec.alternative)
             effect_size = float(result.statistic)
+            effect_sizes = {"spearman_rho": effect_size}
         statistic, pvalue = float(result.statistic), float(result.pvalue)
         if test in {"pearson", "spearman"}:
             figure = factory.scatter_plot(
@@ -300,6 +305,7 @@ def run_hypothesis_test(
             "alternative": spec.alternative,
             "decision": decision,
             "effect_size": effect_size,
+            "effect_sizes": effect_sizes,
             "sample_sizes": sample_sizes,
             "column": spec.column,
             "columns": list(spec.columns),

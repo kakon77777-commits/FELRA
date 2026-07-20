@@ -14,12 +14,17 @@ import scipy
 import yaml
 
 from felra.analysis import AnalysisResult, run_analysis
+from felra.cache import AnalysisCache
 from felra.config import FigureSpec, ProjectSpec, load_project
 from felra.data import Dataset, load_dataset, write_dataset_evidence
 from felra.evidence import write_evidence_bundle
 from felra.expressions import evaluate_expression
 from felra.figures import FigureFactory
 from felra.models import Claim, EvidenceBundle
+from felra.preregistration import PreregistrationError, verify_preregistration
+from felra.provenance import build_provenance, write_provenance
+from felra.reproducibility import result_sha256, write_replay_project
+from felra.registry import append_registry_record, build_registry_record, resolve_registry_path
 from felra.sampling import (
     SampleSet,
     build_boundary_samples,
@@ -39,6 +44,10 @@ class ProjectRun:
     figures: list[str] = field(default_factory=list)
     analyses: list[AnalysisResult] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    registry_record: dict[str, Any] | None = None
+    preregistration: dict[str, Any] | None = None
+    provenance_artifacts: list[str] = field(default_factory=list)
+    replay_project: str | None = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
@@ -169,6 +178,19 @@ def _parameter_samples(project: ProjectSpec) -> dict[str, SampleSet]:
 
 def run_project(project_file: str | Path, output_dir: str | Path) -> ProjectRun:
     project = load_project(project_file)
+    preregistration: dict[str, Any] | None = None
+    preregistration_warning: str | None = None
+    if project.preregistration.enabled:
+        prereg_path = Path(project.preregistration.path).expanduser()
+        if not prereg_path.is_absolute():
+            base_dir = project.source_path.parent if project.source_path else Path.cwd()
+            prereg_path = (base_dir / prereg_path).resolve()
+        verification = verify_preregistration(project, prereg_path)
+        preregistration = verification.to_dict()
+        if not verification.matched:
+            if project.preregistration.mode == "strict":
+                raise PreregistrationError(verification.message)
+            preregistration_warning = f"Preregistration {verification.status}: {verification.message}"
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     (output / "claims").mkdir(exist_ok=True)
@@ -177,7 +199,16 @@ def run_project(project_file: str | Path, output_dir: str | Path) -> ProjectRun:
     figure_factory = FigureFactory(output / "figures")
 
     datasets = {dataset_id: load_dataset(spec) for dataset_id, spec in project.datasets.items()}
+    cache: AnalysisCache | None = None
+    if project.execution.cache:
+        cache_path = Path(project.execution.cache_dir).expanduser()
+        if not cache_path.is_absolute():
+            base_dir = project.source_path.parent if project.source_path else Path.cwd()
+            cache_path = (base_dir / cache_path).resolve()
+        cache = AnalysisCache(cache_path, refresh=project.execution.refresh_cache)
     warnings: list[str] = []
+    if preregistration_warning:
+        warnings.append(preregistration_warning)
     for dataset in datasets.values():
         write_dataset_evidence(dataset, output)
         warnings.extend(
@@ -237,7 +268,8 @@ def run_project(project_file: str | Path, output_dir: str | Path) -> ProjectRun:
                 bundle.figures.append(relative)
 
     analysis_results = [
-        run_analysis(spec, project, output, datasets=datasets) for spec in project.analyses
+        run_analysis(spec, project, output, datasets=datasets, cache=cache)
+        for spec in project.analyses
     ]
     for analysis in analysis_results:
         warnings.extend(
@@ -274,7 +306,24 @@ def run_project(project_file: str | Path, output_dir: str | Path) -> ProjectRun:
         figures=generated_figures,
         analyses=analysis_results,
         warnings=warnings,
+        preregistration=preregistration,
     )
+    if preregistration is not None:
+        (output / "preregistration_verification.json").write_text(
+            json.dumps(preregistration, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    replay_path = write_replay_project(run)
+    run.replay_project = str(replay_path.relative_to(output))
+    provenance_payload = build_provenance(run, _config_hash(project))
+    run.provenance_artifacts = write_provenance(provenance_payload, output)
+    if project.registry.enabled:
+        registry_path = resolve_registry_path(project.registry.path, project.source_path)
+        record = build_registry_record(run, _config_hash(project))
+        append_registry_record(registry_path, record)
+        run.registry_record = {**record, "registry_path": str(registry_path)}
+        (output / "registry_record.json").write_text(
+            json.dumps(run.registry_record, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     _write_project_manifest(run)
     return run
 
@@ -286,6 +335,11 @@ def _write_project_manifest(run: ProjectRun) -> None:
         "numpy": np.__version__,
         "scipy": scipy.__version__,
     }
+    try:
+        from felra import __version__ as felra_version
+    except ImportError:  # pragma: no cover
+        felra_version = "unknown"
+    environment["felra"] = felra_version
     payload: dict[str, Any] = {
         "project": {
             "id": run.project.project_id,
@@ -297,7 +351,11 @@ def _write_project_manifest(run: ProjectRun) -> None:
         "claims_passed": run.claims_passed,
         "analyses_succeeded": run.analyses_succeeded,
         "config_sha256": _config_hash(run.project),
+        "result_sha256": result_sha256(run),
         "environment": environment,
+        "preregistration": run.preregistration,
+        "replay_project": run.replay_project,
+        "provenance": run.provenance_artifacts,
         "datasets": [
             {
                 "id": dataset.spec.dataset_id,
@@ -323,6 +381,8 @@ def _write_project_manifest(run: ProjectRun) -> None:
                 "id": analysis.analysis_id,
                 "type": analysis.kind,
                 "success": analysis.success,
+                "cache_hit": bool(analysis.metrics.get("cache_hit", False)),
+                "cache_fingerprint": analysis.metrics.get("cache_fingerprint"),
                 "report": f"analyses/{analysis.analysis_id}/analysis_report.md",
                 "metrics": f"analyses/{analysis.analysis_id}/metrics.json",
                 "artifacts": analysis.artifacts,
@@ -331,6 +391,7 @@ def _write_project_manifest(run: ProjectRun) -> None:
         ],
         "figures": run.figures,
         "warnings": run.warnings,
+        "registry": run.registry_record,
     }
     (run.output_dir / "manifest.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -345,10 +406,17 @@ def _write_project_manifest(run: ProjectRun) -> None:
         f"- Analyses completed successfully: `{run.analyses_succeeded}`",
         f"- Generated at: `{run.created_at}`",
         f"- Configuration SHA-256: `{_config_hash(run.project)}`",
+        f"- Result SHA-256: `{result_sha256(run)}`",
         "",
         "> All results are finite-budget computational evidence, not universal proofs.",
         "",
     ]
+    if run.preregistration:
+        lines.extend(["## Preregistration", ""])
+        lines.append(f"- Status: `{run.preregistration['status']}`")
+        lines.append(f"- Matched: `{run.preregistration['matched']}`")
+        lines.append(f"- Record: `{run.preregistration['path']}`")
+        lines.append("")
     if run.datasets:
         lines.extend(["## Datasets", ""])
         for dataset in run.datasets.values():
@@ -376,6 +444,14 @@ def _write_project_manifest(run: ProjectRun) -> None:
     if run.figures:
         lines.extend(["", "## Declarative figures", ""])
         lines.extend(f"- `{path}`" for path in run.figures)
+    if run.registry_record:
+        lines.extend(["", "## Experiment registry", ""])
+        lines.append(f"- Run ID: `{run.registry_record['run_id']}`")
+        lines.append(f"- Registry: `{run.registry_record['registry_path']}`")
+        lines.append("- Local record: `registry_record.json`")
+    lines.extend(["", "## Reproducibility", ""])
+    lines.append(f"- Replay project: `{run.replay_project}`")
+    lines.extend(f"- Provenance artifact: `{path}`" for path in run.provenance_artifacts)
     if run.warnings:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {warning}" for warning in run.warnings)

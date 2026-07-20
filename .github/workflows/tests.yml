@@ -23,4 +23,10 @@ jobs:
       - run: felra run examples/advanced/project.yaml --output artifacts/advanced
       - run: felra batch examples/batch/batch.yaml --output artifacts/batch
       - run: felra run examples/data/project.yaml --output artifacts/data
+      - run: felra run examples/research_registry/project.yaml --output artifacts/research-registry
+      - run: felra registry examples/research_registry/.felra-registry/research_runs.jsonl --limit 5
       - run: felra batch examples/repeated_batch/batch.yaml --output artifacts/repeated --workers 2
+      - run: felra verify-preregistration examples/reproducibility/project.yaml --record examples/reproducibility/preregistration.json
+      - run: felra run examples/reproducibility/project.yaml --output artifacts/reproducibility
+      - run: felra replay artifacts/reproducibility --output artifacts/replay
+      - run: felra export artifacts/reproducibility --output artifacts/paper-bundle

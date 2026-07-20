@@ -1,0 +1,88 @@
+project:
+  id: v06_research_registry_demo
+  title: FELRA v0.6 多重比較、交叉驗證與模型比較示範
+  language: zh-TW
+
+execution:
+  seed: 606
+  cache: true
+  cache_dir: .felra-cache
+
+registry:
+  enabled: true
+  path: .felra-registry/research_runs.jsonl
+  tags: [v0.6, synthetic, model-comparison]
+  notes: 合成資料管線示範，不代表外部實證結論。
+
+datasets:
+  study:
+    path: data/synthetic_study.csv
+    format: csv
+    on_error: error
+    columns:
+      row_id: int
+      group: str
+      x: float
+      z: float
+      y: float
+      score: float
+
+claims:
+  - id: finite_study_rows
+    statement: 所有納入分析的數值欄位皆為有限值
+    dataset: study
+    expression: isfinite(x) and isfinite(z) and isfinite(y) and isfinite(score)
+    required_checks: [dataset_rows]
+
+analyses:
+  - id: corrected_group_comparisons
+    type: multiple_comparisons
+    title: 三組分數的多重比較校正
+    dataset: study
+    column: score
+    group_by: group
+    groups: [baseline, method_a, method_b]
+    test: independent_t
+    correction: holm
+    alpha: 0.05
+    alternative: two-sided
+    equal_var: false
+    claim_id: finite_study_rows
+
+  - id: polynomial_cross_validation
+    type: cross_validation
+    title: 二次多項式五折交叉驗證
+    dataset: study
+    target: y
+    features: [x, z]
+    model: polynomial
+    degree: 2
+    folds: 5
+    shuffle: true
+    seed: 606
+    standardize: true
+    claim_id: finite_study_rows
+
+  - id: shared_fold_model_comparison
+    type: model_comparison
+    title: 共享折次下的模型比較
+    dataset: study
+    target: y
+    features: [x, z]
+    folds: 5
+    shuffle: true
+    seed: 606
+    primary_metric: rmse
+    models:
+      - name: linear
+        type: linear
+        standardize: true
+      - name: polynomial_degree_2
+        type: polynomial
+        degree: 2
+        standardize: true
+      - name: polynomial_degree_3
+        type: polynomial
+        degree: 3
+        standardize: true
+    claim_id: finite_study_rows
