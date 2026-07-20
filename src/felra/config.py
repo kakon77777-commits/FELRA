@@ -416,6 +416,21 @@ class NumericalSoundnessAnalysisSpec(BaseAnalysisSpec):
 
 
 @dataclass(frozen=True)
+class CrossMethodSpec:
+    name: str
+    expression: str
+    backend: str = "numeric"
+
+
+@dataclass(frozen=True)
+class CrossMethodAnalysisSpec(BaseAnalysisSpec):
+    parameters: tuple[str, ...] = ()
+    methods: tuple[CrossMethodSpec, ...] = ()
+    precision_digits: int = 30
+    tolerance: float = 1e-9
+
+
+@dataclass(frozen=True)
 class PreregistrationSpec:
     enabled: bool = False
     path: str = ".felra-preregistration/preregistration.json"
@@ -470,6 +485,7 @@ AnalysisSpec: TypeAlias = (
     | ModelComparisonAnalysisSpec
     | SymbolicAnalysisSpec
     | NumericalSoundnessAnalysisSpec
+    | CrossMethodAnalysisSpec
 )
 
 
@@ -942,11 +958,53 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             relative_error_threshold=relative_error_threshold,
         )
 
+    if kind == "cross_method":
+        _require_fields(data, {"parameters", "methods"}, context=f"Analysis {analysis_id!r}")
+        cm_parameters = tuple(str(item) for item in data["parameters"])
+        if not cm_parameters:
+            raise ProjectConfigError("cross_method requires at least one parameter")
+        if len(cm_parameters) != len(set(cm_parameters)):
+            raise ProjectConfigError("cross_method parameters must be unique")
+        raw_methods = data["methods"]
+        if not isinstance(raw_methods, list) or len(raw_methods) < 2:
+            raise ProjectConfigError("cross_method requires at least two methods")
+        methods: list[CrossMethodSpec] = []
+        method_names: list[str] = []
+        for item in raw_methods:
+            if not isinstance(item, dict):
+                raise ProjectConfigError("cross_method methods must be mappings")
+            _require_fields(item, {"name", "expression"}, context="cross_method method")
+            backend = str(item.get("backend", "numeric"))
+            if backend not in {"numeric", "symbolic", "high_precision"}:
+                raise ProjectConfigError(
+                    "cross_method method backend must be numeric, symbolic, or high_precision"
+                )
+            name = str(item["name"])
+            method_names.append(name)
+            methods.append(
+                CrossMethodSpec(name=name, expression=str(item["expression"]), backend=backend)
+            )
+        if len(method_names) != len(set(method_names)):
+            raise ProjectConfigError("cross_method method names must be unique")
+        cm_precision_digits = int(data.get("precision_digits", 30))
+        if cm_precision_digits < 15:
+            raise ProjectConfigError("cross_method precision_digits must be at least 15")
+        tolerance = float(data.get("tolerance", 1e-9))
+        if tolerance <= 0:
+            raise ProjectConfigError("cross_method tolerance must be positive")
+        return CrossMethodAnalysisSpec(
+            **base,
+            parameters=cm_parameters,
+            methods=tuple(methods),
+            precision_digits=cm_precision_digits,
+            tolerance=tolerance,
+        )
+
     raise ProjectConfigError(
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
         "multiple_comparisons, cross_validation, model_comparison, symbolic, "
-        "or numerical_soundness"
+        "numerical_soundness, or cross_method"
     )
 
 
@@ -1046,7 +1104,7 @@ def _validate_analysis_references(project: ProjectSpec) -> None:
             referenced_parameters.update(analysis.parameters)
             fixed = analysis.fixed
             referenced_parameters.update(fixed)
-        elif isinstance(analysis, NumericalSoundnessAnalysisSpec):
+        elif isinstance(analysis, (NumericalSoundnessAnalysisSpec, CrossMethodAnalysisSpec)):
             referenced_parameters.update(analysis.parameters)
         unknown = sorted(referenced_parameters.difference(available_parameters))
         if unknown:

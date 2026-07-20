@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.0.0 — 2026-07-20
+
+FELRA v1.0.0 — completion of the whitepaper's implementation roadmap stage 2
+(`docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` section 15:
+"全域驗證編排與大量圖形生成"), defined as the full Python-first global
+verification orchestration channel set V0-V8 (section 9.4) plus the Figure
+Factory. Stage 3 onward (FELRA-Spec clause promotion, SMT/Lean backends, RWL
+projection, the eight operators, dual memory) is explicitly out of scope for
+1.0.0 and left for future versions.
+
+- Added `cross_method` analysis type (V8 cross-method consistency): declares
+  two or more independently-formulated or independently-evaluated methods
+  (`numeric` via `felra.expressions`, `symbolic` via `felra.symbolic`, or
+  `high_precision` via mpmath) for the same quantity and reports pairwise
+  agreement — distinct from V3 numerical soundness, which checks a single
+  fixed formula's own conditioning, not whether alternative formulations
+  agree with it.
+- Added v1.0 schema and a cross-method-consistency example with two real
+  cases: independent-evaluator agreement on a trig identity, and a genuine
+  disagreement between a naive formula and its algebraic simplification at
+  a removable singularity (demonstrating that arbitrary precision alone
+  does not resolve a literal 0/0 — only a different method does).
+- 6 new regression tests (58 total across v0.1-1.0.0).
+
+### V0-V8 status at v1.0.0
+
+| Channel | Status | Since |
+|---|---|---|
+| V0 reproducibility & environment | done | v0.1 |
+| V1 structural validation | done | v0.1 |
+| V2 symbolic verification | done | v0.8.0 |
+| V3 numerical soundness | done | v0.9.0 |
+| V4 property/invariant checks | partial (claim expressions over sampled domains; no Hypothesis-style property-based test generator) | v0.1 |
+| V5 boundary & counterexample search | done | v0.1-v0.2 |
+| V6 statistics & uncertainty | done | v0.4-v0.6 |
+| V7 sensitivity & global search | done | v0.3 |
+| V8 cross-method consistency | done | 1.0.0 |
+| V9 formal/external verification | explicitly out of scope for 1.0.0 — stage 3+ | — |
+
+V4 is intentionally left "partial" rather than claimed done: FELRA's claim
+expressions already check declared properties across sampled/exhaustive
+domains (the same mechanism used throughout V0-V8), which satisfies the
+whitepaper's V4 description in substance; a dedicated Hypothesis-style
+property-based test *generator* was never built and is not required to
+call stage 2 complete.
+
 ## 0.9.0 — 2026-07-20
 
 - Added `numerical_soundness` analysis type (V3 numerical soundness): overflow/NaN detection, exact-derivative condition-number estimation, and float64-vs-arbitrary-precision (mpmath) catastrophic-cancellation detection, all driven from a single symbolic parse of the expression (reuses `felra.symbolic` from v0.8).

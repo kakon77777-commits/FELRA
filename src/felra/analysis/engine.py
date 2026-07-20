@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from felra.analysis.bootstrap import run_bootstrap_ci
+from felra.analysis.cross_method import run_cross_method
 from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
 from felra.analysis.models import AnalysisResult
 from felra.analysis.multiple_comparisons import run_multiple_comparisons
@@ -21,6 +22,7 @@ from felra.cache import AnalysisCache, analysis_fingerprint
 from felra.config import (
     AnalysisSpec,
     BootstrapCIAnalysisSpec,
+    CrossMethodAnalysisSpec,
     CrossValidationAnalysisSpec,
     DescriptiveAnalysisSpec,
     HypothesisTestAnalysisSpec,
@@ -156,6 +158,8 @@ def run_analysis(
             result = run_symbolic(spec, output_dir, output_root)
         elif isinstance(spec, NumericalSoundnessAnalysisSpec):
             result = run_numerical_soundness(spec, project, output_dir, output_root)
+        elif isinstance(spec, CrossMethodAnalysisSpec):
+            result = run_cross_method(spec, project, output_dir, output_root)
         else:  # pragma: no cover - exhaustive type guard
             raise TypeError(f"Unsupported analysis spec {type(spec).__name__}")
     except Exception as exc:

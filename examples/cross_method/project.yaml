@@ -1,0 +1,65 @@
+project:
+  id: cross-method-demo
+  title: FELRA v1.0 Cross-Method Consistency Demo
+  language: en
+
+execution:
+  max_evaluations: 101
+  random_samples: 100
+  seed: 3
+
+parameters:
+  x_trig:
+    type: float
+    range: [-10, 10]
+    samples: 101
+
+  x_pole:
+    # Deliberately includes the removable singularity of the unsimplified
+    # method at x = 1. High-precision arbitrary-precision arithmetic does
+    # NOT fix a literal 0/0 — only an algebraically different formulation
+    # does, which is exactly the distinction V8 exists to surface.
+    type: float
+    values: [0.5, 0.99, 0.999999, 1.0, 1.000001, 1.01, 1.5, 2.0]
+
+analyses:
+  # Two independent evaluators (felra.expressions' numpy AST-walker vs
+  # felra.symbolic's SymPy AST-walker) of the same trig identity — they
+  # should agree everywhere, well within float64 rounding.
+  - id: trig_identity
+    type: cross_method
+    title: sin(x)^2 + cos(x)^2 == 1, two independent evaluators
+    parameters: [x_trig]
+    tolerance: 1.0e-9
+    methods:
+      - name: numeric_identity
+        expression: sin(x_trig) ** 2 + cos(x_trig) ** 2
+        backend: numeric
+      - name: numeric_constant
+        expression: "1"
+        backend: numeric
+      - name: symbolic_identity
+        expression: sin(x_trig) ** 2 + cos(x_trig) ** 2
+        backend: symbolic
+
+  # A genuine cross-method disagreement: the naive, unsimplified formula
+  # hits a removable singularity (0/0) exactly at x = 1, where the
+  # algebraically-simplified formula does not. Arbitrary precision on the
+  # naive formula does not rescue it either -- 0/0 stays undefined at any
+  # precision, which is exactly why this is a DIFFERENT finding from V3's
+  # numerical-soundness precision checks.
+  - id: removable_singularity
+    type: cross_method
+    title: (x^2-1)/(x-1) vs x+1 near the removable singularity at x = 1
+    parameters: [x_pole]
+    tolerance: 1.0e-9
+    methods:
+      - name: naive_formula
+        expression: (x_pole ** 2 - 1) / (x_pole - 1)
+        backend: numeric
+      - name: naive_formula_high_precision
+        expression: (x_pole ** 2 - 1) / (x_pole - 1)
+        backend: high_precision
+      - name: algebraically_simplified
+        expression: x_pole + 1
+        backend: numeric

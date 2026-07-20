@@ -19,7 +19,9 @@ $$
 \text{SMT／Lean／RWL}.
 $$
 
-目前版本：**v0.9.0 — Numerical Soundness (V3)**
+目前版本：**v1.0.0 — Cross-Method Consistency (V8) · 全域驗證編排（階段 2）完成**
+
+依白皮書 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` 第 15 章的定義，v1.0.0 代表第 9.4 節 V0–V8 驗證通道與 Figure Factory 全部完成；第 3 階段以後（FELRA 條款提升、SMT／Lean、RWL 投影、八算子）明確不在 1.0.0 範圍內。完整通道對照表見 `CHANGELOG.md` 1.0.0 條目。
 
 ## 核心能力
 
@@ -47,6 +49,7 @@ $$
 - `felra export` 論文級 Methods、Results、Limitations、CITATION 與檔案雜湊包；
 - 符號代數恆等與導數驗證（SymPy），支援每變數宣告假設（`positive`／`real`／`integer` 等）；
 - 數值健全性檢查：溢位／NaN、精確導數條件數、float64 對任意精度（mpmath）的精度失真偵測；
+- 跨方法一致性：同一物理量宣告多種獨立公式／評估後端（numeric／symbolic／high_precision），逐點比對是否一致；
 
 ## 安裝
 
@@ -85,6 +88,7 @@ felra replay artifacts/reproducibility --output artifacts/replay
 felra export artifacts/reproducibility --output artifacts/paper-bundle
 felra run examples/symbolic/project.yaml --output artifacts/symbolic
 felra run examples/numerical_soundness/project.yaml --output artifacts/numerical_soundness
+felra run examples/cross_method/project.yaml --output artifacts/cross_method
 ```
 
 ## 外部資料規格
@@ -351,6 +355,25 @@ analyses:
 
 範例 `examples/numerical_soundness/project.yaml` 是三個真實案例，不是示意：`x² + 1`（乾淨對照組）、`1/(x-1)` 在 `x=1` 極點附近（真實奇異點）、`(1 - cos(x)) / x²` 在 `x` 小到 `1e-10` 時（float64 算出恰好 `0.0`，真實值是 `0.5`，教科書級的災難性抵銷）。
 
+## 跨方法一致性
+
+```yaml
+analyses:
+  - id: removable_singularity
+    type: cross_method
+    parameters: [x]
+    tolerance: 1.0e-9
+    methods:
+      - name: naive_formula
+        expression: (x ** 2 - 1) / (x - 1)
+        backend: numeric
+      - name: algebraically_simplified
+        expression: x + 1
+        backend: numeric
+```
+
+宣告同一物理量的兩種以上獨立公式或評估後端（`numeric`／`symbolic`／`high_precision`），在同一宣告域上逐點比對。這回答的問題跟「數值健全性」不同：數值健全性問「這一條固定公式本身穩不穩」，跨方法一致性問「不同寫法／不同獨立實作算出來的是不是同一個答案」。範例刻意示範：`1/(x-1)` 在 `x=1` 的可去奇點，即使用任意精度（`high_precision`）重算也一樣是 `0/0` 未定義——精度拉高救不了字面上的不定式，只有換一個代數上等價但寫法不同的公式（`x+1`）才行，這正是 V8 存在的理由。
+
 ## 證據包
 
 ```text
@@ -380,6 +403,7 @@ python -m compileall -q src tests
 
 規格文件：
 
+- `docs/PROJECT_SPEC_v1.0.md`
 - `docs/PROJECT_SPEC_v0.9.md`
 - `docs/PROJECT_SPEC_v0.8.md`
 - `docs/PREREGISTRATION_PROVENANCE_REPLAY_v0.7.md`
@@ -388,7 +412,7 @@ python -m compileall -q src tests
 - `docs/POWER_ROBUSTNESS_CACHE_v0.5.md`
 - `docs/DATA_STATISTICS_PIPELINE_v0.4.md`
 - `docs/BATCH_REPLICATION_v0.4.md`
-- `schema/project-v0.9.schema.json`
+- `schema/project-v1.0.schema.json`
 - `schema/batch-v0.5.schema.json`
 
 完整理論設計見 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md`。
