@@ -406,6 +406,16 @@ class SymbolicAnalysisSpec(BaseAnalysisSpec):
 
 
 @dataclass(frozen=True)
+class NumericalSoundnessAnalysisSpec(BaseAnalysisSpec):
+    expression: str = ""
+    parameters: tuple[str, ...] = ()
+    precision_digits: int = 30
+    precision_sample_limit: int = 200
+    condition_threshold: float = 1e6
+    relative_error_threshold: float = 1e-6
+
+
+@dataclass(frozen=True)
 class PreregistrationSpec:
     enabled: bool = False
     path: str = ".felra-preregistration/preregistration.json"
@@ -459,6 +469,7 @@ AnalysisSpec: TypeAlias = (
     | CrossValidationAnalysisSpec
     | ModelComparisonAnalysisSpec
     | SymbolicAnalysisSpec
+    | NumericalSoundnessAnalysisSpec
 )
 
 
@@ -897,10 +908,45 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             expected_derivative=str(data["expected_derivative"]),
         )
 
+    if kind == "numerical_soundness":
+        _require_fields(data, {"expression", "parameters"}, context=f"Analysis {analysis_id!r}")
+        parameters = tuple(str(item) for item in data["parameters"])
+        if not parameters:
+            raise ProjectConfigError("numerical_soundness requires at least one parameter")
+        if len(parameters) != len(set(parameters)):
+            raise ProjectConfigError("numerical_soundness parameters must be unique")
+        precision_digits = int(data.get("precision_digits", 30))
+        if precision_digits < 15:
+            raise ProjectConfigError(
+                "numerical_soundness precision_digits must be at least 15 "
+                "(float64 already carries ~15-17 significant digits)"
+            )
+        precision_sample_limit = int(data.get("precision_sample_limit", 200))
+        if precision_sample_limit < 1:
+            raise ProjectConfigError("numerical_soundness precision_sample_limit must be positive")
+        condition_threshold = float(data.get("condition_threshold", 1e6))
+        if condition_threshold <= 0:
+            raise ProjectConfigError("numerical_soundness condition_threshold must be positive")
+        relative_error_threshold = float(data.get("relative_error_threshold", 1e-6))
+        if relative_error_threshold <= 0:
+            raise ProjectConfigError(
+                "numerical_soundness relative_error_threshold must be positive"
+            )
+        return NumericalSoundnessAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            parameters=parameters,
+            precision_digits=precision_digits,
+            precision_sample_limit=precision_sample_limit,
+            condition_threshold=condition_threshold,
+            relative_error_threshold=relative_error_threshold,
+        )
+
     raise ProjectConfigError(
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
-        "multiple_comparisons, cross_validation, model_comparison, or symbolic"
+        "multiple_comparisons, cross_validation, model_comparison, symbolic, "
+        "or numerical_soundness"
     )
 
 
@@ -1000,6 +1046,8 @@ def _validate_analysis_references(project: ProjectSpec) -> None:
             referenced_parameters.update(analysis.parameters)
             fixed = analysis.fixed
             referenced_parameters.update(fixed)
+        elif isinstance(analysis, NumericalSoundnessAnalysisSpec):
+            referenced_parameters.update(analysis.parameters)
         unknown = sorted(referenced_parameters.difference(available_parameters))
         if unknown:
             raise ProjectConfigError(

@@ -1,0 +1,1267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evemisslab.com/schema/felra/project-v0.9.schema.json",
+  "title": "FELRA Project v0.9",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "max_evaluations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "random_samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "cache": {
+          "type": "boolean"
+        },
+        "cache_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "refresh_cache": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "float",
+              "int"
+            ]
+          },
+          "range": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1
+          },
+          "samples": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "range"
+            ]
+          },
+          {
+            "required": [
+              "values"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "statement",
+          "expression"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "statement": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "required_checks": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "numerical",
+                "boundaries",
+                "counterexample_search",
+                "dataset_rows"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "max_counterexamples": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dataset": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "analyses": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "expression"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "sensitivity"
+              },
+              "expression": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "baseline": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "relative_step": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "absolute_step": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "reference",
+              "approximation"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "residual"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "approximation": {
+                "type": "string"
+              },
+              "independent": {
+                "type": "string"
+              },
+              "tolerance": {
+                "type": "number",
+                "minimum": 0
+              },
+              "bins": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "objective"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "parameter_sweep"
+              },
+              "objective": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "fixed": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "goal": {
+                "enum": [
+                  "minimize",
+                  "maximize"
+                ]
+              },
+              "top_k": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "objectives"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "pareto"
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "fixed": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "objectives": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "expression"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expression": {
+                      "type": "string"
+                    },
+                    "goal": {
+                      "enum": [
+                        "minimize",
+                        "maximize"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "columns"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "descriptive"
+              },
+              "dataset": {
+                "type": "string"
+              },
+              "columns": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "bins": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "test"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "hypothesis_test"
+              },
+              "dataset": {
+                "type": "string"
+              },
+              "test": {
+                "enum": [
+                  "one_sample_t",
+                  "independent_t",
+                  "paired_t",
+                  "mann_whitney",
+                  "wilcoxon",
+                  "pearson",
+                  "spearman"
+                ]
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "column": {
+                "type": "string"
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mu": {
+                "type": "number"
+              },
+              "equal_var": {
+                "type": "boolean"
+              },
+              "alternative": {
+                "enum": [
+                  "two-sided",
+                  "less",
+                  "greater"
+                ]
+              },
+              "alpha": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "column"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "bootstrap_ci"
+              },
+              "dataset": {
+                "type": "string"
+              },
+              "column": {
+                "type": "string"
+              },
+              "statistic": {
+                "enum": [
+                  "mean",
+                  "median"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "resamples": {
+                "type": "integer",
+                "minimum": 100
+              },
+              "seed": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "test",
+              "effect_size"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "power"
+              },
+              "test": {
+                "enum": [
+                  "one_sample_t",
+                  "paired_t",
+                  "independent_t",
+                  "correlation"
+                ]
+              },
+              "effect_size": {
+                "type": "number",
+                "not": {
+                  "const": 0
+                }
+              },
+              "alpha": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "target_power": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "sample_size": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "alternative": {
+                "enum": [
+                  "two-sided",
+                  "less",
+                  "greater"
+                ]
+              },
+              "allocation_ratio": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "max_sample_size": {
+                "type": "integer",
+                "minimum": 4
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "statistic",
+              "columns"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "robustness"
+              },
+              "dataset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "statistic": {
+                "enum": [
+                  "mean",
+                  "median",
+                  "std",
+                  "correlation",
+                  "mean_difference"
+                ]
+              },
+              "columns": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "group_by": {
+                "type": "string"
+              },
+              "groups": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "method": {
+                "enum": [
+                  "bootstrap",
+                  "subsample"
+                ]
+              },
+              "repetitions": {
+                "type": "integer",
+                "minimum": 100
+              },
+              "fraction": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "confidence": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "seed": {
+                "type": "integer"
+              },
+              "bins": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "column",
+              "group_by"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "multiple_comparisons"
+              },
+              "dataset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "group_by": {
+                "type": "string",
+                "minLength": 1
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "comparisons": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "test": {
+                "enum": [
+                  "independent_t",
+                  "mann_whitney"
+                ]
+              },
+              "correction": {
+                "enum": [
+                  "none",
+                  "bonferroni",
+                  "holm",
+                  "fdr_bh"
+                ]
+              },
+              "alpha": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "alternative": {
+                "enum": [
+                  "two-sided",
+                  "less",
+                  "greater"
+                ]
+              },
+              "equal_var": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "target",
+              "features"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "cross_validation"
+              },
+              "dataset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "model": {
+                "enum": [
+                  "linear",
+                  "polynomial"
+                ]
+              },
+              "degree": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "folds": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "shuffle": {
+                "type": "boolean"
+              },
+              "seed": {
+                "type": "integer"
+              },
+              "standardize": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "dataset",
+              "target",
+              "features",
+              "models"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "model_comparison"
+              },
+              "dataset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "enum": [
+                        "linear",
+                        "polynomial"
+                      ]
+                    },
+                    "degree": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "standardize": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 2
+              },
+              "folds": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "shuffle": {
+                "type": "boolean"
+              },
+              "seed": {
+                "type": "integer"
+              },
+              "primary_metric": {
+                "enum": [
+                  "rmse",
+                  "mae",
+                  "r2"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "check",
+              "variables"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "symbolic"
+              },
+              "check": {
+                "enum": [
+                  "equivalence",
+                  "derivative"
+                ]
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "assumptions": {
+                "type": "object",
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "real",
+                          "positive",
+                          "negative",
+                          "nonnegative",
+                          "nonpositive",
+                          "nonzero",
+                          "integer",
+                          "rational",
+                          "complex"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "lhs": {
+                "type": "string"
+              },
+              "rhs": {
+                "type": "string"
+              },
+              "expression": {
+                "type": "string"
+              },
+              "with_respect_to": {
+                "type": "string"
+              },
+              "expected_derivative": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "expression",
+              "parameters"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "claim_id": {
+                "type": "string"
+              },
+              "type": {
+                "const": "numerical_soundness"
+              },
+              "expression": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "precision_digits": {
+                "type": "integer",
+                "minimum": 15
+              },
+              "precision_sample_limit": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "condition_threshold": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "relative_error_threshold": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "properties": {
+        "figures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "line",
+                  "scatter",
+                  "histogram",
+                  "heatmap",
+                  "contour",
+                  "phase_map"
+                ]
+              },
+              "filename": {
+                "type": "string",
+                "pattern": "\\.(png|svg|pdf)$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "x": {
+                "type": "string"
+              },
+              "y": {
+                "type": "string"
+              },
+              "z": {
+                "type": "string"
+              },
+              "xlabel": {
+                "type": "string"
+              },
+              "ylabel": {
+                "type": "string"
+              },
+              "bins": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "claim_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "datasets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "path",
+          "columns"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "format": {
+            "enum": [
+              "csv",
+              "json",
+              "jsonl"
+            ]
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "delimiter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1
+          },
+          "on_error": {
+            "enum": [
+              "drop",
+              "error",
+              "keep"
+            ]
+          },
+          "missing_values": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "columns": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "enum": [
+                    "float",
+                    "int",
+                    "str",
+                    "bool"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "float",
+                        "int",
+                        "str",
+                        "bool"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "registry": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "preregistration": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "warn",
+            "strict"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": {
+        "claims": {
+          "type": "array",
+          "minItems": 1
+        }
+      },
+      "required": [
+        "claims"
+      ]
+    },
+    {
+      "properties": {
+        "analyses": {
+          "type": "array",
+          "minItems": 1
+        }
+      },
+      "required": [
+        "analyses"
+      ]
+    }
+  ]
+}

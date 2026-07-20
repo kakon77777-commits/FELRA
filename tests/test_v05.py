@@ -110,7 +110,15 @@ claims:
     assert dataset.row_count == 2
 
 
-def test_cli_version_is_v05() -> None:
+def test_cli_version_matches_pyproject() -> None:
+    import re
+
     from felra import __version__
 
-    assert __version__ == "0.7.0"
+    pyproject_text = Path("pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^version = "([^"]+)"', pyproject_text, re.MULTILINE)
+    assert match is not None, "pyproject.toml must declare a [project] version"
+    assert __version__ == match.group(1), (
+        "src/felra/__init__.py's __version__ must be bumped alongside pyproject.toml's "
+        "version on every release (see AGENTS.md section 7)"
+    )

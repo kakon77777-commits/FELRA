@@ -19,7 +19,7 @@ $$
 \text{SMT／Lean／RWL}.
 $$
 
-目前版本：**v0.8.0 — Symbolic Verification (V2)**
+目前版本：**v0.9.0 — Numerical Soundness (V3)**
 
 ## 核心能力
 
@@ -46,6 +46,7 @@ $$
 - 科學結果 SHA-256 指紋與 `felra replay` 獨立重播；
 - `felra export` 論文級 Methods、Results、Limitations、CITATION 與檔案雜湊包；
 - 符號代數恆等與導數驗證（SymPy），支援每變數宣告假設（`positive`／`real`／`integer` 等）；
+- 數值健全性檢查：溢位／NaN、精確導數條件數、float64 對任意精度（mpmath）的精度失真偵測；
 
 ## 安裝
 
@@ -83,6 +84,7 @@ felra run examples/reproducibility/project.yaml --output artifacts/reproducibili
 felra replay artifacts/reproducibility --output artifacts/replay
 felra export artifacts/reproducibility --output artifacts/paper-bundle
 felra run examples/symbolic/project.yaml --output artifacts/symbolic
+felra run examples/numerical_soundness/project.yaml --output artifacts/numerical_soundness
 ```
 
 ## 外部資料規格
@@ -333,6 +335,22 @@ analyses:
 
 這是**整個宣告域上的精確檢查**，跟 `residual`／`sensitivity`／反例搜索等取樣式通道是互補而非取代關係：取樣式通道回報「在 N 個取樣點內未發現反例」，符號通道回報「在宣告假設下，整個定義域上恆成立」——兩者是不同強度的主張，範例 `examples/symbolic/project.yaml` 特意示範同一個命題（`sqrt(x²) == x`）分別用兩種通道檢查，在未宣告 `x` 為正時，取樣式通道找到具體反例、符號通道也獨立回報不成立，兩者互相印證。
 
+## 數值健全性
+
+```yaml
+analyses:
+  - id: cancellation
+    type: numerical_soundness
+    expression: (1 - cos(x)) / x ** 2
+    parameters: [x]
+    precision_digits: 30
+    relative_error_threshold: 1.0e-6
+```
+
+同一次符號解析（跟 `symbolic` 共用 `felra.symbolic`）同時驅動三種檢查：float64 溢位／NaN 偵測；用**精確符號導數**（不是有限差分估計）算出的條件數 `κᵢ(x) = |xᵢ·∂f/∂xᵢ / f(x)|`；以及 float64 對任意精度（mpmath）參考值的相對誤差，抓出災難性抵銷。`f(x)` 恰好為零的點另外歸類為 `singular`，不併入條件數統計（除以零本身無定義，不是「很大」而已）。
+
+範例 `examples/numerical_soundness/project.yaml` 是三個真實案例，不是示意：`x² + 1`（乾淨對照組）、`1/(x-1)` 在 `x=1` 極點附近（真實奇異點）、`(1 - cos(x)) / x²` 在 `x` 小到 `1e-10` 時（float64 算出恰好 `0.0`，真實值是 `0.5`，教科書級的災難性抵銷）。
+
 ## 證據包
 
 ```text
@@ -362,6 +380,7 @@ python -m compileall -q src tests
 
 規格文件：
 
+- `docs/PROJECT_SPEC_v0.9.md`
 - `docs/PROJECT_SPEC_v0.8.md`
 - `docs/PREREGISTRATION_PROVENANCE_REPLAY_v0.7.md`
 - `docs/PROJECT_SPEC_v0.7.md`
@@ -369,7 +388,7 @@ python -m compileall -q src tests
 - `docs/POWER_ROBUSTNESS_CACHE_v0.5.md`
 - `docs/DATA_STATISTICS_PIPELINE_v0.4.md`
 - `docs/BATCH_REPLICATION_v0.4.md`
-- `schema/project-v0.8.schema.json`
+- `schema/project-v0.9.schema.json`
 - `schema/batch-v0.5.schema.json`
 
 完整理論設計見 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md`。

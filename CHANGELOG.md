@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 — 2026-07-20
+
+- Added `numerical_soundness` analysis type (V3 numerical soundness): overflow/NaN detection, exact-derivative condition-number estimation, and float64-vs-arbitrary-precision (mpmath) catastrophic-cancellation detection, all driven from a single symbolic parse of the expression (reuses `felra.symbolic` from v0.8).
+- Added `mpmath` as an explicit dependency (previously only a transitive dependency of sympy).
+- Added v0.9 schema, a numerical-soundness example with three worked cases (well-conditioned control, a real pole, and textbook catastrophic cancellation in `(1-cos(x))/x**2`), documentation, and 5 regression tests.
+- Second step toward FELRA v1.0.0. Remaining gap: V8 cross-method consistency.
+
 ## 0.8.0 — 2026-07-20
 
 - Added `symbolic` analysis type (V2 symbolic verification): exact algebraic-equivalence and derivative checks via SymPy, complementing the existing sampling-based residual/sensitivity/counterexample channels.

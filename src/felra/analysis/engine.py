@@ -7,6 +7,7 @@ from felra.analysis.bootstrap import run_bootstrap_ci
 from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
 from felra.analysis.models import AnalysisResult
 from felra.analysis.multiple_comparisons import run_multiple_comparisons
+from felra.analysis.numerical_soundness import run_numerical_soundness
 from felra.analysis.pareto import run_pareto
 from felra.analysis.power import run_power_analysis
 from felra.analysis.residual import run_residual
@@ -25,6 +26,7 @@ from felra.config import (
     HypothesisTestAnalysisSpec,
     ModelComparisonAnalysisSpec,
     MultipleComparisonAnalysisSpec,
+    NumericalSoundnessAnalysisSpec,
     ParetoAnalysisSpec,
     PowerAnalysisSpec,
     ProjectSpec,
@@ -152,6 +154,8 @@ def run_analysis(
             )
         elif isinstance(spec, SymbolicAnalysisSpec):
             result = run_symbolic(spec, output_dir, output_root)
+        elif isinstance(spec, NumericalSoundnessAnalysisSpec):
+            result = run_numerical_soundness(spec, project, output_dir, output_root)
         else:  # pragma: no cover - exhaustive type guard
             raise TypeError(f"Unsupported analysis spec {type(spec).__name__}")
     except Exception as exc:

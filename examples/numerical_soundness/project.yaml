@@ -1,0 +1,60 @@
+project:
+  id: numerical-soundness-demo
+  title: FELRA v0.9 Numerical Soundness Demo
+  language: en
+
+execution:
+  max_evaluations: 201
+  random_samples: 200
+  seed: 5
+
+parameters:
+  x_wide:
+    type: float
+    range: [-5, 5]
+    samples: 201
+
+  x_near_pole:
+    # Deliberately straddles the pole at x = 1: with 101 symmetric samples the
+    # midpoint lands exactly on 1.0 (a real division-by-zero, caught as
+    # non-finite), and its immediate neighbors are within ~2e-8 of the pole
+    # (caught as ill-conditioned, finite but numerically fragile).
+    type: float
+    range: [0.999999, 1.000001]
+    samples: 101
+
+  x_tiny:
+    # Explicit values spanning several orders of magnitude — a linear range
+    # over [1e-10, 1] would put almost no points where 1-cos(x) actually
+    # suffers catastrophic cancellation in float64.
+    type: float
+    values: [1.0e-10, 1.0e-8, 1.0e-6, 1.0e-4, 1.0e-2, 0.5, 1.0]
+
+analyses:
+  # A clean control case: no overflow, no near-zero denominator, no
+  # catastrophic cancellation anywhere on the declared domain.
+  - id: well_behaved
+    type: numerical_soundness
+    title: x^2 + 1, no singularities on the declared domain
+    expression: x_wide ** 2 + 1
+    parameters: [x_wide]
+
+  # V3 condition number + singularity detection: 1/(x-1) near its pole.
+  - id: near_singularity
+    type: numerical_soundness
+    title: 1/(x-1) near its pole at x = 1
+    expression: 1 / (x_near_pole - 1)
+    parameters: [x_near_pole]
+    condition_threshold: 1.0e+6
+
+  # V3 precision loss: (1 - cos(x)) / x^2 -> 0.5 as x -> 0 mathematically, but
+  # float64 computes 1 - cos(x) as exactly 0 for x below ~1e-8 (cos(x) rounds
+  # to 1.0), a textbook catastrophic-cancellation failure that only a
+  # higher-precision reference computation can detect.
+  - id: cancellation
+    type: numerical_soundness
+    title: (1 - cos(x)) / x^2 catastrophic cancellation for small x
+    expression: (1 - cos(x_tiny)) / x_tiny ** 2
+    parameters: [x_tiny]
+    precision_digits: 30
+    relative_error_threshold: 1.0e-6
