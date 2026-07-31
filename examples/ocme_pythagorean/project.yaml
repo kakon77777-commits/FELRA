@@ -1,0 +1,29 @@
+project:
+  id: ocme-pythagorean-finite-check
+  title: 畢達哥拉斯整數候選的有限域機器檢驗
+  language: zh-TW
+
+execution:
+  max_evaluations: 500000
+  random_samples: 20000
+  seed: 42
+
+parameters:
+  a:
+    type: int
+    range: [1, 200]
+    samples: 200
+  b:
+    type: int
+    range: [1, 200]
+    samples: 200
+
+claims:
+  - id: generated_hypotenuse_dominance
+    statement: 在宣告整數域中，若 a²+b² 是完全平方數，則其正平方根不小於 a 與 b
+    expression: a ** 2 + b ** 2 != floor(sqrt(a ** 2 + b ** 2)) ** 2 or (floor(sqrt(a ** 2 + b ** 2)) >= a and floor(sqrt(a ** 2 + b ** 2)) >= b)
+    status: hypothesis
+    required_checks:
+      - numerical
+      - boundaries
+      - counterexample_search
