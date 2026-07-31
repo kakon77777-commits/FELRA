@@ -1,0 +1,44 @@
+name: OCME FELRA Evidence Run
+
+on:
+  push:
+    branches:
+      - integration/ocme-pythagorean-evidence-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned FELRA branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install FELRA
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          felra --version
+
+      - name: Run OCME evidence project
+        run: felra run examples/ocme_pythagorean/project.yaml --output artifacts/ocme-pythagorean
+
+      - name: Replay FELRA result
+        run: felra replay artifacts/ocme-pythagorean --output artifacts/ocme-pythagorean-replay
+
+      - name: Upload FELRA evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocme-pythagorean-felra-v1
+          if-no-files-found: error
+          path: |
+            artifacts/ocme-pythagorean/
+            artifacts/ocme-pythagorean-replay/
