@@ -1,6 +1,6 @@
 project:
   id: ocme-pythagorean-finite-check
-  title: 畢達哥拉斯整數候選的有限域機器檢驗
+  title: 畢達哥拉斯整數三元組的有限域機器檢驗
   language: zh-TW
 
 execution:
@@ -11,17 +11,21 @@ execution:
 parameters:
   a:
     type: int
-    range: [1, 200]
-    samples: 200
+    range: [1, 50]
+    samples: 50
   b:
     type: int
-    range: [1, 200]
-    samples: 200
+    range: [1, 50]
+    samples: 50
+  c:
+    type: int
+    range: [1, 50]
+    samples: 50
 
 claims:
   - id: generated_hypotenuse_dominance
-    statement: 在宣告整數域中，若 a²+b² 是完全平方數，則其正平方根不小於 a 與 b
-    expression: a ** 2 + b ** 2 != floor(sqrt(a ** 2 + b ** 2)) ** 2 or (floor(sqrt(a ** 2 + b ** 2)) >= a and floor(sqrt(a ** 2 + b ** 2)) >= b)
+    statement: 在宣告整數域中，任何滿足 a²+b²=c² 的三元組，其 c 不小於 a 與 b
+    expression: a ** 2 + b ** 2 != c ** 2 or (c >= a and c >= b)
     status: hypothesis
     required_checks:
       - numerical
