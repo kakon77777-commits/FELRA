@@ -59,7 +59,7 @@ class NumericBackendError(ValueError):
 
 
 #: The ontologies this version can actually compute in.
-NUMERIC_ONTOLOGIES = ("float64", "decimal", "rational")
+NUMERIC_ONTOLOGIES = ("float64", "decimal", "rational", "binary_mp")
 
 #: §18.3 asks a cross-backend comparison to distinguish three outcomes, not two.
 AGREEMENT_CLASSES = ("exact", "within_tolerance", "inconsistent")
@@ -167,6 +167,14 @@ def to_backend(value: ExactValue, ontology: str, *, decimal_prec: int = 50,
         exact = True
     elif ontology == "float64":
         after = Fraction(float(exact_before))
+        exact = after == exact_before
+    elif ontology == "binary_mp":
+        import mpmath
+
+        with mpmath.workprec(int(decimal_prec * 3.3219280948873626) + 8):
+            value_mp = mpmath.mpf(exact_before.numerator) / mpmath.mpf(
+                exact_before.denominator)
+        after = _exact(value_mp)
         exact = after == exact_before
     else:  # decimal
         with localcontext() as ctx:
@@ -310,11 +318,31 @@ def _walk(node, env, kind, prec):
     raise NumericBackendError("unsupported syntax %s" % type(node).__name__)
 
 
+def _exact(value) -> Fraction:
+    """Back to an exact Fraction, whatever ontology produced the value.
+
+    An `mpf` carries its mantissa and binary exponent, which IS its exact value;
+    routing it through `float()` would round to double first and every residual
+    downstream would then measure that rounding rather than the backend.
+    """
+    if hasattr(value, "man_exp"):
+        man, exp = value.man_exp
+        return Fraction(man) * Fraction(2) ** exp
+    return Fraction(value)
+
+
 def _coerce(value: Fraction, kind: str, prec: int):
     if kind == "rational":
         return value
     if kind == "float64":
         return float(value)
+    if kind == "binary_mp":
+        import mpmath
+
+        # mpmath works in BITS; `prec` here is decimal digits, so the conversion
+        # happens in one place and the caller's unit never silently changes.
+        with mpmath.workprec(int(prec * 3.3219280948873626) + 8):
+            return mpmath.mpf(value.numerator) / mpmath.mpf(value.denominator)
     with localcontext() as ctx:
         ctx.prec = prec
         return Decimal(value.numerator) / Decimal(value.denominator)
@@ -340,13 +368,20 @@ def evaluate_arithmetic(expression: str, assignments: dict[str, ExactValue],
     # not honoured, which is the exact failure this package exists to catch. Found
     # by pointing the tool at the Collatz anchor and getting 4e-29 where the same
     # computation done by hand gave 2e-41.
-    with localcontext() as ctx:
+    import contextlib
+
+    with localcontext() as ctx, contextlib.ExitStack() as stack:
         if ontology == "decimal":
             ctx.prec = decimal_prec
+        if ontology == "binary_mp":
+            import mpmath
+
+            stack.enter_context(
+                mpmath.workprec(int(decimal_prec * 3.3219280948873626) + 8))
         env = {
             name: _coerce(to_backend(value, ontology, decimal_prec=decimal_prec).value,
                           ontology, decimal_prec)
             for name, value in assignments.items()
         }
         result = _walk(_ast.parse(expression, mode="eval"), env, ontology, decimal_prec)
-        return Fraction(result)
+        return _exact(result)

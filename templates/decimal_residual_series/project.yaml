@@ -1,0 +1,53 @@
+project:
+  id: decimal-residual-series
+  title: The decimal-information-residue verification pack
+  language: en
+
+# The template section 12 of the addendum asks for, covering the eight checks
+# acceptance 18.5 requires. Everything here is an identity over exact rationals
+# except 12.5, which is the one that measures rather than confirms.
+#
+# The value is QUOTED. A bare 1/7 would be a string anyway, but 0.1 would be a
+# YAML float — already rounded before any residue could be taken — and the loader
+# refuses it with that as the reason.
+
+numeric_policy:
+  default_backend: rational
+  source_parsing: exact_string
+  certification:
+    mode: interval
+
+parameters:
+  n:
+    type: int
+    range: [1, 60]
+    samples: 60
+
+claims:
+  - id: truncation_loses_only_the_residue
+    statement: Truncating to n digits in base b loses exactly b^-n R_n
+    expression: n > 0
+    status: hypothesis
+    required_checks:
+      - numerical
+
+analyses:
+  - id: residual_pack_one_seventh
+    type: decimal_residual
+    title: 1/7 — a repeating expansion in every one of the five bases
+    claim_id: truncation_loses_only_the_residue
+    value: "1/7"
+    bases: [10, 2, 3, 8, 16]
+    levels: 60
+    backends: [float64, decimal, binary_mp]
+    precisions: [16, 40]
+
+  - id: residual_pack_terminating
+    type: decimal_residual
+    title: 1/8 — terminating in base 2, 8 and 16, repeating in base 3 and 10
+    claim_id: truncation_loses_only_the_residue
+    value: "1/8"
+    bases: [10, 2, 3, 8, 16]
+    levels: 60
+    backends: [float64, decimal, binary_mp]
+    precisions: [16, 40]

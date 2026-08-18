@@ -80,7 +80,9 @@ def test_non_arithmetic_is_refused_rather_than_approximated():
 
 
 def test_stage_c_actually_implements_what_stage_a_only_recorded():
-    assert set(IMPLEMENTED_BACKENDS) == {"float64", "decimal", "rational"}
+    # Stage C's own claim, stated as a subset rather than an equality so that a
+    # later stage adding a backend does not fail this test for no reason.
+    assert {"float64", "decimal", "rational"} <= set(IMPLEMENTED_BACKENDS)
     from felra.numeric_policy import NumericPolicy
 
     policy = NumericPolicy.from_mapping({"default_backend": "decimal"})

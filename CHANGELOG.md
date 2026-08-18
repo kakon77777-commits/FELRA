@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.6.0 — 2026-08-18
+
+FELRA v1.6.0 — the `binary_mp` backend, completing stage D's registry, and the
+decimal-information-residue pack of section 12, satisfying acceptance 18.5.
+
+### Added
+
+- **`binary_mp` backend** (mpmath). `IMPLEMENTED_BACKENDS` now covers every
+  ontology stage C and D name. An `mpf` is converted through its mantissa and
+  binary exponent, which is its **exact** value — routing it through `float()`
+  would round to double first and every residual downstream would then measure
+  that rounding rather than the backend.
+- **`decimal_residual` analysis type** and `templates/decimal_residual_series/`,
+  covering section 12's eight checks: the reconstruction identity, the residue
+  range, the shift law, five bases, `n_fail`, source-parsing comparison,
+  cross-representation residues, and a strict envelope.
+- Identities are asserted **exactly**, not to a tolerance. A reconstruction
+  identity that holds only to 1e-30 is not the identity; it is evidence that
+  something upstream rounded.
+
+### 12.5 had to be made into a measurement
+
+`n_fail(ρ, p)` is the first level at which a backend departs from the exact
+reference. The first version compared **residues** for equality — and an inexact
+backend's residue differs at level 1 for any value it cannot represent, so it
+reported `n_fail = 1` for every backend at every precision. A number that does not
+move with the thing it measures is not a measurement.
+
+Comparing **truncations** asks how many correct digits the representation actually
+delivers, which is what the addendum means. It now varies as it should:
+
+| | 16 digits | 40 digits |
+| --- | --- | --- |
+| `float64` | 17 | 17 |
+| `decimal` | 16 | 40 |
+| `binary_mp` | 20 | 43 |
+
+`float64`'s horizon does not move with the declared precision, because it has no
+precision knob — and that is itself the informative part of the row.
+
+### A degenerate case, reported as degenerate
+
+`1/8` is exactly representable in binary, so no backend ever departs and `n_fail`
+is null everywhere. The pack reports 6/7 boolean checks with a warning saying
+`n_fail` is not a measurement for that value, rather than a clean 7/7 that would
+mean nothing. The identities still hold, so the analysis still passes.
+
+### Two tests re-aimed, both for the right reason
+
+`binary_mp` had been the example of a declared-but-unimplemented backend in a
+v1.2.0 test, and stage C's test asserted `IMPLEMENTED_BACKENDS` by equality. Both
+now pin the **invariant** — whatever the registry still lists as absent, and a
+subset rather than an equality — so a later stage implementing another backend
+does not fail them for no reason.
+
 ## 1.5.0 — 2026-08-18
 
 FELRA v1.5.0 — strict envelopes and numeric certificates, stage E of

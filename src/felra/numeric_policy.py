@@ -112,9 +112,10 @@ ROUNDING_MODES = (
 NUMERIC_BACKENDS = ("float64", "decimal", "rational", "binary_mp", "interval", "ball")
 
 #: What this version can actually compute in. Stage A added none by design;
-#: stage C (v1.3.0) adds decimal and rational, and this tuple is the ONLY place
+#: stage C (v1.3.0) added decimal and rational and stage D (v1.6.0) binary_mp;
+#: this tuple is the ONLY place
 #: that claim is made, so `declared_but_not_implemented` cannot drift from it.
-IMPLEMENTED_BACKENDS = ("float64", "decimal", "rational")
+IMPLEMENTED_BACKENDS = ("float64", "decimal", "rational", "binary_mp")
 
 _ESCALATION_STRATEGIES = ("doubling", "linear", "fixed")
 

@@ -12,6 +12,7 @@ import pytest
 from felra.numeric_policy import (
     EVIDENCE_LEVEL_ORDER,
     IMPLEMENTED_BACKENDS,
+    NUMERIC_BACKENDS,
     NumericPolicy,
     NumericPolicyError,
     describe_numeric_environment,
@@ -55,17 +56,19 @@ def test_a_declared_backend_is_not_silently_honoured():
     """The addendum permits naming a backend before it exists. What it must not do
     is let a manifest imply the computation used it.
 
-    This test originally named `decimal`, which v1.3.0 then implemented — so it
-    failed for the right reason and is rewritten to pin the INVARIANT rather than
-    the set of backends that happened to exist when it was written. `binary_mp` is
-    stage D and is the current example of a declared-but-absent backend.
+    This test has now failed twice for the right reason. It first named `decimal`,
+    which v1.3.0 implemented; rewritten around `binary_mp`, which v1.6.0
+    implemented. Both times the failure was the codebase catching up with its own
+    registry, which is what this assertion is for — so it is written against
+    whatever is still absent rather than against a name.
     """
-    policy = NumericPolicy.from_mapping({"default_backend": "binary_mp"})
+    absent = [b for b in NUMERIC_BACKENDS if b not in IMPLEMENTED_BACKENDS]
+    assert absent, "the registry must still name something unimplemented, or this "                    "test has nothing to say"
+    policy = NumericPolicy.from_mapping({"default_backend": absent[0]})
     assert policy is not None
     pending = policy.declared_but_not_implemented()
-    assert any("binary_mp" in item for item in pending)
+    assert any(absent[0] in item for item in pending)
     assert "float64" in IMPLEMENTED_BACKENDS
-    assert "binary_mp" not in IMPLEMENTED_BACKENDS
     # and a backend that IS implemented must not be listed as pending
     implemented = NumericPolicy.from_mapping({"default_backend": "float64"})
     assert implemented is not None

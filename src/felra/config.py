@@ -438,6 +438,17 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
 
 
 @dataclass(frozen=True)
+class DecimalResidualAnalysisSpec(BaseAnalysisSpec):
+    """§12's verification pack. `value` is a quoted string, read exactly."""
+
+    value: str = ""
+    bases: tuple[int, ...] = (2, 3, 8, 10, 16)
+    levels: int = 8
+    backends: tuple[str, ...] = ("float64", "decimal", "binary_mp")
+    precisions: tuple[int, ...] = (16, 40)
+
+
+@dataclass(frozen=True)
 class NumericCertificateAnalysisSpec(BaseAnalysisSpec):
     """Stage-E strict envelope. `box` bounds are quoted strings, read exactly."""
 
@@ -1071,6 +1082,35 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             methods=tuple(methods),
             precision_digits=cm_precision_digits,
             tolerance=tolerance,
+        )
+
+    if kind == "decimal_residual":
+        _require_fields(data, {"value"}, context=f"Analysis {analysis_id!r}")
+        if isinstance(data["value"], float):
+            raise ProjectConfigError(
+                "decimal_residual value is a YAML float, already rounded before any "
+                "residue is taken; quote it so it is read exactly")
+        dr_bases = tuple(int(b) for b in data.get("bases", (2, 3, 8, 10, 16)))
+        if any(b < 2 for b in dr_bases):
+            raise ProjectConfigError("decimal_residual bases must all be at least 2")
+        if len(dr_bases) < 5:
+            raise ProjectConfigError(
+                "acceptance 18.5 asks for at least five bases; %d given"
+                % len(dr_bases))
+        dr_backends = tuple(str(b) for b in
+                            data.get("backends", ("float64", "decimal", "binary_mp")))
+        for backend in dr_backends:
+            if backend not in NUMERIC_ONTOLOGIES:
+                raise ProjectConfigError(
+                    "decimal_residual backend must be one of %s"
+                    % ", ".join(NUMERIC_ONTOLOGIES))
+        return DecimalResidualAnalysisSpec(
+            **base,
+            value=str(data["value"]),
+            bases=dr_bases,
+            levels=int(data.get("levels", 8)),
+            backends=dr_backends,
+            precisions=tuple(int(p) for p in data.get("precisions", (16, 40))),
         )
 
     if kind == "numeric_certificate":

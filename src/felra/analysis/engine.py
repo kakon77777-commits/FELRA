@@ -6,6 +6,7 @@ from pathlib import Path
 from felra.analysis.bootstrap import run_bootstrap_ci
 from felra.analysis.cross_method import run_cross_method
 from felra.analysis.cross_backend import run_cross_backend
+from felra.analysis.decimal_residual import run_decimal_residual
 from felra.analysis.numeric_certificate import run_numeric_certificate
 from felra.analysis.precision_ladder import run_precision_ladder
 from felra.analysis.formal_check import run_formal_check
@@ -27,6 +28,7 @@ from felra.config import (
     AnalysisSpec,
     BootstrapCIAnalysisSpec,
     CrossBackendAnalysisSpec,
+    DecimalResidualAnalysisSpec,
     NumericCertificateAnalysisSpec,
     PrecisionLadderAnalysisSpec,
     CrossMethodAnalysisSpec,
@@ -168,6 +170,8 @@ def run_analysis(
             result = run_numerical_soundness(spec, project, output_dir, output_root)
         elif isinstance(spec, CrossMethodAnalysisSpec):
             result = run_cross_method(spec, project, output_dir, output_root)
+        elif isinstance(spec, DecimalResidualAnalysisSpec):
+            result = run_decimal_residual(spec, output_dir=output_dir)
         elif isinstance(spec, NumericCertificateAnalysisSpec):
             result = run_numeric_certificate(spec, output_dir=output_dir)
         elif isinstance(spec, PrecisionLadderAnalysisSpec):
