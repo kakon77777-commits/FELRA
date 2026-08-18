@@ -6,6 +6,9 @@ from typing import Any, TypeAlias
 
 import yaml
 
+from felra.formal import BACKENDS as FORMAL_BACKENDS
+from felra.formal import FORMAL_STATUSES
+
 
 class ProjectConfigError(ValueError):
     """Raised when a FELRA project file is incomplete or inconsistent."""
@@ -428,6 +431,28 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
     methods: tuple[CrossMethodSpec, ...] = ()
     precision_digits: int = 30
     tolerance: float = 1e-9
+
+
+@dataclass(frozen=True)
+class FormalCheckAnalysisSpec(BaseAnalysisSpec):
+    """Stage-4 external formal check.
+
+    A project declares WHICH adapter and WHAT obligation, never a command to run.
+    `expect` is the formal status the author asserts in advance, so a checker
+    returning something else is a reportable disagreement rather than a silently
+    accepted result.
+    """
+
+    backend: str = "lean"
+    obligation: str = ""
+    project_dir: str | None = None
+    jar: str | None = None
+    config_file: str | None = None
+    expect: str = "verified"
+    timeout_seconds: int = 900
+    assumptions: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    derives_from: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1000,11 +1025,49 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             tolerance=tolerance,
         )
 
+    if kind == "formal_check":
+        _require_fields(data, {"backend", "obligation"}, context=f"Analysis {analysis_id!r}")
+        fc_backend = str(data["backend"])
+        if fc_backend not in FORMAL_BACKENDS:
+            raise ProjectConfigError(
+                "formal_check backend must be one of %s; the backend list is closed "
+                "on purpose, see docs/FORMAL_BACKENDS.md" % ", ".join(FORMAL_BACKENDS)
+            )
+        obligation = str(data["obligation"]).strip()
+        if not obligation:
+            raise ProjectConfigError("formal_check obligation must not be empty")
+        expect = str(data.get("expect", "verified"))
+        if expect not in FORMAL_STATUSES:
+            raise ProjectConfigError(
+                "formal_check expect must be one of %s" % ", ".join(FORMAL_STATUSES)
+            )
+        timeout_seconds = int(data.get("timeout_seconds", 900))
+        if timeout_seconds <= 0:
+            raise ProjectConfigError("formal_check timeout_seconds must be positive")
+        if fc_backend == "tlc" and not data.get("jar"):
+            raise ProjectConfigError(
+                "formal_check backend tlc requires a `jar` path; FELRA does not ship "
+                "or download tla2tools.jar"
+            )
+        return FormalCheckAnalysisSpec(
+            **base,
+            backend=fc_backend,
+            obligation=obligation,
+            project_dir=(str(data["project_dir"]) if data.get("project_dir") else None),
+            jar=(str(data["jar"]) if data.get("jar") else None),
+            config_file=(str(data["config_file"]) if data.get("config_file") else None),
+            expect=expect,
+            timeout_seconds=timeout_seconds,
+            assumptions=tuple(str(x) for x in data.get("assumptions", ())),
+            limitations=tuple(str(x) for x in data.get("limitations", ())),
+            derives_from=tuple(str(x) for x in data.get("derives_from", ())),
+        )
+
     raise ProjectConfigError(
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
         "multiple_comparisons, cross_validation, model_comparison, symbolic, "
-        "numerical_soundness, or cross_method"
+        "numerical_soundness, cross_method, or formal_check"
     )
 
 

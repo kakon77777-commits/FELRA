@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.1.0 — 2026-08-18
+
+FELRA v1.1.0 — the first slice of the whitepaper's implementation roadmap stage 4
+(`docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` section 15,
+"正式驗證後端"): external formal checkers, invoked but never depended on, with
+their verdicts recorded beside the Python evidence rather than merged into it.
+
+### Added
+
+- **`formal_check` analysis type.** Invokes an external formal checker on a
+  declared obligation and reports its verdict separately from FELRA's own
+  pipeline flag. This implements the stage-4 requirement
+  「將 Python 證據狀態與正式證明狀態分開標記」.
+- **`felra.formal`** — a *closed* set of adapters (`lean`, `tlc`, `z3`). A project
+  declares which adapter and what obligation; it never supplies a command to run.
+  An unknown backend is refused rather than guessed at.
+- **Four-valued formal status** — `verified`, `refuted`, `unknown`,
+  `unavailable`. `unknown` (the checker ran and did not decide) and `unavailable`
+  (the checker did not run) are distinct on purpose: collapsing them is how a
+  missing tool becomes an implicit pass. A project declaring `expect: verified`
+  **fails** on a machine where the checker is absent.
+- **Verification certificates.** Every run records which program ran (backend,
+  command, resolved path, version string, and the SHA-256 of the executable or
+  archive that decided), what was checked (obligation path, SHA-256, size), what
+  the verdict rests on (`assumptions`, `limitations`), and where the obligation
+  came from (`derives_from`).
+- **`docs/FORMAL_BACKENDS.md`** — a permanent register of every backend: what
+  program it invokes, when it was added, and what real artifact it was validated
+  against. Adding a backend without a register entry is a defect.
+- **`examples/formal_check/`** — a self-contained TLA+ model plus a project
+  demonstrating both a real check and the `unavailable` path. Environment-dependent
+  by nature, so deliberately **not** part of the mandatory gate set in
+  `AGENTS.md` section 8.
+- `tests/test_v11.py` — 12 tests, none of which require a checker to be installed.
+
+### Scope notes
+
+- **No dependency was added.** FELRA does not ship, download, or require any
+  solver or proof assistant. `tla2tools.jar` in particular is never fetched; its
+  path is declared by the project.
+- **No existing result changed meaning.** `success` keeps its pipeline semantics
+  everywhere. `AGENTS.md` section 11 lists changing the meaning of "pass" or
+  "proof" as requiring approval; adding a *separate* status alongside is what
+  avoids being that change.
+- **`z3`'s `unsat`/`sat` mapping has not been exercised against a real solver** —
+  z3 is not installed on the machine where this slice was written. Only its
+  `unavailable` path is tested. Recorded in the register rather than glossed.
+
+### Fixed
+
+- A path bug in the formal adapter, found by running a real checker rather than a
+  mock. The obligation was resolved against the caller's working directory and the
+  subprocess's directory was then set to the obligation's own parent, so the path
+  was consumed twice. TLC's resulting "file not found" exit was nearly recorded as
+  a refutation of a model it had in fact checked cleanly. Paths are absolute before
+  invocation now, and a clean transcript with a non-zero exit is reported as
+  `unknown` with the disagreement stated rather than resolved in either direction.
+
 ## 1.0.0 — 2026-07-20
 
 FELRA v1.0.0 — completion of the whitepaper's implementation roadmap stage 2

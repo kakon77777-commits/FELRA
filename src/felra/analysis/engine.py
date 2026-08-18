@@ -5,6 +5,7 @@ from pathlib import Path
 
 from felra.analysis.bootstrap import run_bootstrap_ci
 from felra.analysis.cross_method import run_cross_method
+from felra.analysis.formal_check import run_formal_check
 from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
 from felra.analysis.models import AnalysisResult
 from felra.analysis.multiple_comparisons import run_multiple_comparisons
@@ -23,6 +24,7 @@ from felra.config import (
     AnalysisSpec,
     BootstrapCIAnalysisSpec,
     CrossMethodAnalysisSpec,
+    FormalCheckAnalysisSpec,
     CrossValidationAnalysisSpec,
     DescriptiveAnalysisSpec,
     HypothesisTestAnalysisSpec,
@@ -160,6 +162,15 @@ def run_analysis(
             result = run_numerical_soundness(spec, project, output_dir, output_root)
         elif isinstance(spec, CrossMethodAnalysisSpec):
             result = run_cross_method(spec, project, output_dir, output_root)
+        elif isinstance(spec, FormalCheckAnalysisSpec):
+            # Paths in a formal_check are relative to the project file, not to the
+            # process working directory, so a project stays portable.
+            base_dir = (
+                project.source_path.parent
+                if project.source_path is not None
+                else Path.cwd()
+            )
+            result = run_formal_check(spec, base_dir=base_dir, output_dir=output_dir)
         else:  # pragma: no cover - exhaustive type guard
             raise TypeError(f"Unsupported analysis spec {type(spec).__name__}")
     except Exception as exc:
