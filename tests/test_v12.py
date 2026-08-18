@@ -181,3 +181,20 @@ def test_declaring_or_changing_a_policy_separates_the_result_hash(monkeypatch):
                    separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     assert absent == legacy, "a project without a policy must hash exactly as before"
+
+
+def test_falsified_means_a_counterexample_not_a_failed_expectation():
+    """Section 11's F is 發現有效反例, not "an analysis did not meet its expectation".
+
+    Briefly driven by `not run.passed`, which made a deliberate cross-backend
+    disagreement report as though the claim had been refuted — a verdict on the
+    mathematics that the run never reached. Caught by pointing FELRA at the
+    Collatz anchor project.
+    """
+    # an analysis-level failure with no counterexample must not falsify
+    not_refuted = evidence_status(executed=True, falsified=False)
+    assert not_refuted["highest_level"] == "executed"
+    assert "falsified" not in not_refuted
+
+    refuted = evidence_status(executed=True, falsified=True)
+    assert refuted["highest_level"] == "falsified"

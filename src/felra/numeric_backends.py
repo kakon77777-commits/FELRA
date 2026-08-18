@@ -333,10 +333,20 @@ def evaluate_arithmetic(expression: str, assignments: dict[str, ExactValue],
                 "comparison is defined for arithmetic only"
                 % type(node).__name__
             )
-    env = {
-        name: _coerce(to_backend(value, ontology, decimal_prec=decimal_prec).value,
-                      ontology, decimal_prec)
-        for name, value in assignments.items()
-    }
-    result = _walk(_ast.parse(expression, mode="eval"), env, ontology, decimal_prec)
-    return Fraction(result)
+    # The declared precision must govern the ARITHMETIC, not merely the input
+    # conversion. An earlier version set the context inside `_coerce` only, so
+    # every operation afterwards ran at Python's default Decimal precision of 28
+    # however many digits the project asked for — a declared precision that was
+    # not honoured, which is the exact failure this package exists to catch. Found
+    # by pointing the tool at the Collatz anchor and getting 4e-29 where the same
+    # computation done by hand gave 2e-41.
+    with localcontext() as ctx:
+        if ontology == "decimal":
+            ctx.prec = decimal_prec
+        env = {
+            name: _coerce(to_backend(value, ontology, decimal_prec=decimal_prec).value,
+                          ontology, decimal_prec)
+            for name, value in assignments.items()
+        }
+        result = _walk(_ast.parse(expression, mode="eval"), env, ontology, decimal_prec)
+        return Fraction(result)

@@ -42,7 +42,12 @@ def run_cross_backend(
 ) -> AnalysisResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
-    tolerance = Fraction(spec.tolerance).limit_denominator(10 ** 30)
+    # `Fraction(x)` is already exact for a float; the `limit_denominator(10**30)`
+    # that used to be here silently collapsed any tolerance below 1e-30 to ZERO,
+    # so a project declaring `tolerance: 1e-38` was quietly given a strict exact
+    # comparison. Found by declaring exactly that on the Collatz anchor project
+    # and getting `inconsistent` where the measured error was 3e-41.
+    tolerance = Fraction(spec.tolerance)
 
     points: list[dict[str, Any]] = []
     pair_counts: dict[str, dict[str, int]] = {

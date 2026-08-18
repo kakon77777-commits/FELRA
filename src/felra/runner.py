@@ -352,11 +352,23 @@ def _numeric_section(run: ProjectRun) -> dict[str, Any] | None:
 
 
 def _evidence_section(run: ProjectRun) -> dict[str, Any]:
+    # `falsified` is section 11's F: 發現有效反例 — a counterexample was found.
+    # It was briefly driven by `not run.passed`, which conflates "some analysis
+    # did not meet its declared expectation" with "the claim is refuted". A
+    # cross-backend inconsistency is a finding about REPRESENTATIONS, not a
+    # counterexample to the claim, and reporting it as `falsified` would put a
+    # verdict on the mathematics that the run never reached. Caught by running
+    # this against the Collatz anchor project, where a deliberate float64
+    # disagreement was reported as though the claim had been refuted.
+    refuted = any(
+        not bundle.passed and any(result.counterexamples for result in bundle.results)
+        for bundle in run.bundles
+    )
     return evidence_status(
         executed=True,
         reproduced=None,
         formal_results=_formal_results(run),
-        falsified=not run.passed,
+        falsified=refuted,
     )
 
 def _write_project_manifest(run: ProjectRun) -> None:

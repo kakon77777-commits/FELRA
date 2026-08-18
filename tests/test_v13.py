@@ -130,3 +130,53 @@ def test_unknown_ontology_is_refused(tmp_path):
     )
     with pytest.raises(ProjectConfigError):
         load_project(project)
+
+
+def test_decimal_prec_governs_the_arithmetic_not_just_the_inputs():
+    """A declared precision that is not honoured is worse than none.
+
+    The first version of `evaluate_arithmetic` set the Decimal context inside the
+    input coercion only, so every operation afterwards ran at Python's default 28
+    digits however many the project declared. It was found by pointing the tool at
+    a real computation — the Collatz anchor gap — and getting 4e-29 where the same
+    arithmetic done by hand at the declared precision gave 2e-41.
+
+    This test fails on that version, because the three results are identical there.
+    """
+    env = {"two": exact_parse("2"), "three": exact_parse("3"), "m": exact_parse("150")}
+    exact = evaluate_arithmetic("1 - (two / three) ** m", env, "rational")
+
+    errors = {}
+    for prec in (28, 40, 60):
+        got = evaluate_arithmetic(
+            "1 - (two / three) ** m", env, "decimal", decimal_prec=prec
+        )
+        errors[prec] = abs(got - exact)
+
+    assert errors[28] > errors[40] > errors[60], (
+        "declaring more digits must actually buy accuracy; got %r" % errors
+    )
+    # and the default-precision result must be distinguishable from the high one,
+    # or the parameter is decorative
+    assert errors[28] != errors[60]
+
+
+def test_a_small_declared_tolerance_is_not_collapsed_to_zero():
+    """`limit_denominator(10**30)` turned any tolerance below 1e-30 into zero.
+
+    A project declaring `tolerance: 1e-38` was then given a strict exact
+    comparison it never asked for, and its results said `inconsistent` for
+    differences far inside the tolerance it declared. Found on the Collatz anchor
+    project, where the measured error was 3e-41.
+    """
+    from fractions import Fraction as F
+
+    assert F(1e-38).limit_denominator(10 ** 30) == 0, "the old behaviour, for the record"
+    assert F(1e-38) > 0
+
+    # and end to end: a difference of ~3e-41 must be within a declared 1e-38
+    env = {"two": exact_parse("2"), "three": exact_parse("3"), "m": exact_parse("150")}
+    d = evaluate_arithmetic("1 - (two / three) ** m", env, "decimal", decimal_prec=40)
+    r = evaluate_arithmetic("1 - (two / three) ** m", env, "rational")
+    assert agreement_class(d, r, F(1e-38)) == "within_tolerance"
+    assert agreement_class(d, r, F(0)) == "inconsistent"
