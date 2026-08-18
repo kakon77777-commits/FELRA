@@ -1,0 +1,48 @@
+project:
+  id: numeric-certificate-demo
+  title: A statement about a whole box, not about sampled points
+  language: en
+
+# Every sampling channel in FELRA says "no counterexample was found among the
+# points tried". An interval evaluation says "the range over the WHOLE box is
+# contained in [L, U]" — uncountably many points, established by arithmetic.
+#
+# The two analyses below are the same function written two ways, and they get
+# different answers. That is not a bug: interval arithmetic overestimates whenever
+# a variable occurs more than once (the dependency problem), so the unfactored form
+# cannot establish the bound and its certificate is REFUSED. A refusal is not a
+# refutation.
+
+parameters:
+  x:
+    type: float
+    range: [0.0, 3.0]
+    samples: 10
+
+claims:
+  - id: shifted_square_is_positive
+    statement: (x-1)^2 + 2 is positive on [0, 3]
+    expression: (x - 1) ** 2 + 2 > 0
+    status: hypothesis
+    required_checks:
+      - numerical
+      - counterexample_search
+
+analyses:
+  - id: factored_form_certifies
+    type: numeric_certificate
+    title: (x-1)^2 + 2 over [0, 3] — each variable occurs once
+    claim_id: shifted_square_is_positive
+    expression: (x - 1) ** 2 + 2
+    establish: ">"
+    box:
+      x: {lo: "0", hi: "3"}
+
+  - id: unfactored_form_cannot
+    type: numeric_certificate
+    title: The same function as x^2 - 2x + 3 — x occurs twice, so the enclosure widens
+    claim_id: shifted_square_is_positive
+    expression: x ** 2 - 2 * x + 3
+    establish: ">"
+    box:
+      x: {lo: "0", hi: "3"}

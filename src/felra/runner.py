@@ -23,6 +23,7 @@ from felra.figures import FigureFactory
 from felra.models import Claim, EvidenceBundle
 from felra.preregistration import PreregistrationError, verify_preregistration
 from felra.provenance import build_provenance, write_provenance
+from felra.certificates import verify_certificate
 from felra.numeric_policy import describe_numeric_environment, evidence_status
 from felra.reproducibility import result_sha256, write_replay_project
 from felra.registry import append_registry_record, build_registry_record, resolve_registry_path
@@ -337,6 +338,41 @@ def _formal_results(run: ProjectRun) -> list[dict[str, Any]]:
     ]
 
 
+def _certificate_section(run: ProjectRun) -> dict[str, Any] | None:
+    """Every certificate, its hash, and the verdict of RE-CHECKING it here.
+
+    §18.4 asks for the hashes in the manifest and for an invalid certificate to
+    stop a replay counting as a complete pass. Re-verification happens at manifest
+    time rather than being copied from the issuing analysis, because a certificate
+    confirmed only by the thing that issued it has been confirmed by nobody.
+    """
+    entries: list[dict[str, Any]] = []
+    for analysis in run.analyses:
+        for cert in (analysis.metrics.get("certificates") or []):
+            ok, detail = verify_certificate(cert)
+            entries.append({
+                "analysis": analysis.analysis_id,
+                "kind": cert.get("kind"),
+                "subject": cert.get("subject"),
+                "certificate_sha256": cert.get("certificate_sha256"),
+                "reverified": ok,
+                "detail": detail,
+            })
+    if not entries:
+        return None
+    invalid = [e for e in entries if not e["reverified"]]
+    return {
+        "count": len(entries),
+        "all_reverified": not invalid,
+        "invalid": invalid,
+        "entries": entries,
+        "note": (
+            "each certificate is re-checked from its own recorded data at manifest "
+            "time; a run carrying an unverifiable certificate is not a complete pass"
+        ),
+    }
+
+
 def _numeric_section(run: ProjectRun) -> dict[str, Any] | None:
     policy = getattr(run.project, "numeric_policy", None)
     if policy is None:
@@ -364,6 +400,7 @@ def _evidence_section(run: ProjectRun) -> dict[str, Any]:
         not bundle.passed and any(result.counterexamples for result in bundle.results)
         for bundle in run.bundles
     )
+    certs = _certificate_section(run)
     ladders = [a for a in run.analyses if a.kind == "precision_ladder"]
     backends = [a for a in run.analyses if a.kind == "cross_backend"]
     return evidence_status(
@@ -375,6 +412,7 @@ def _evidence_section(run: ProjectRun) -> dict[str, Any]:
         exact_verified=(
             all(a.metrics.get("exactness") == "exact_on_every_point"
                 for a in backends) if backends else None),
+        numerically_certified=(certs["all_reverified"] if certs else None),
         formal_results=_formal_results(run),
         falsified=refuted,
     )
@@ -408,6 +446,7 @@ def _write_project_manifest(run: ProjectRun) -> None:
         # that predates v1.2.0 produces a byte-identical manifest shape and an
         # unchanged result_sha256 (addendum 17.1, 17.3).
         "numeric": _numeric_section(run),
+        "certificates": _certificate_section(run),
         "evidence_status": _evidence_section(run),
         "preregistration": run.preregistration,
         "replay_project": run.replay_project,

@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.5.0 — 2026-08-18
+
+FELRA v1.5.0 — strict envelopes and numeric certificates, stage E of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16, satisfying acceptance
+section 18.4. Stage F's 證書回收與驗證 lands here too, because §10.5's fifth
+certificate kind is an external formal verdict — which v1.1.0 already produces.
+
+### Added
+
+- **`numeric_certificate` analysis type.** Interval arithmetic over a declared box
+  with exact rational endpoints. Where every sampling channel in FELRA says "no
+  counterexample was found among the points tried", this says "the range over the
+  **whole box** is contained in `[L, U]`" — a statement about uncountably many
+  points, established by arithmetic rather than by trying them. That is why it can
+  raise the evidence ladder's `numerically_certified` rung when no amount of
+  sampling could.
+- **Five certificate kinds**, §10.1–10.5: `interval`, `ball`, `exact_identity`,
+  `inequality`, `external_formal`.
+- **Independent re-verification** (18.4 證書可獨立重驗). `verify_certificate` reads
+  only what the certificate records and never calls back into the analysis engine.
+  A certificate confirmable only by repeating the computation is a log line.
+- **Certificates and their hashes enter the manifest**, and each is **re-checked at
+  manifest time** rather than having the issuing analysis's verdict copied over. A
+  certificate confirmed only by the thing that issued it has been confirmed by
+  nobody. A run carrying an unverifiable certificate is not a complete pass
+  (18.4 證書失效時重播不得標記為完整通過).
+- **Outward rounding where it matters.** Endpoints are exact `Fraction`s, so the
+  arithmetic needs no rounding at all; `to_decimal` rounds the lower endpoint down
+  and the upper up, so a certificate can never be narrowed by the act of displaying
+  it.
+
+### Refusals, which are most of the value
+
+- An enclosure that does not establish the requested relation yields **no
+  certificate**. `x² − 2x + 3` is `(x−1)² + 2 > 0` everywhere, but in its
+  unfactored form over `[0, 3]` interval arithmetic gives `[−3, 12]` — the
+  dependency problem, a variable occurring more than once. The certificate is
+  refused, and **a refusal is not a refutation of the bound**. Both forms ship as
+  `examples/numeric_certificate` precisely so the difference is visible.
+- Division by an interval containing zero is refused rather than returned as
+  something that is not an enclosure.
+- An identity that does not hold, and a formal outcome that is not `verified`,
+  are both refused at issue.
+- An `external_formal` certificate records the checker's identity and the
+  obligation's hash, and its re-verification says plainly that **re-running the
+  prover is the original check again, not an independent re-verification of it**.
+
+### Fixed
+
+- `Interval.to_decimal` raised `InvalidOperation` on any enclosure with an integer
+  part: the Decimal context counts significant digits while the parameter is
+  decimal places, so quantising `[2, 6]` needed headroom the context did not have.
+  Found the first time this met an enclosure that was not a fraction below one.
+
 ## 1.4.0 — 2026-08-18
 
 FELRA v1.4.0 — the precision ladder, stage D of

@@ -313,6 +313,7 @@ def evidence_status(
     precision_stable: bool | None = None,
     cross_backend_consistent: bool | None = None,
     exact_verified: bool | None = None,
+    numerically_certified: bool | None = None,
     formal_results: list[dict[str, Any]] | None = None,
     falsified: bool = False,
 ) -> dict[str, Any]:
@@ -332,7 +333,8 @@ def evidence_status(
     # the absence of a check.
     for name, value in (("precision_stable", precision_stable),
                         ("cross_backend_consistent", cross_backend_consistent),
-                        ("exact_verified", exact_verified)):
+                        ("exact_verified", exact_verified),
+                        ("numerically_certified", numerically_certified)):
         if value is not None:
             levels[name] = "pass" if value else "fail"
 

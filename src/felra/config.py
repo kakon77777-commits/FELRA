@@ -438,6 +438,15 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
 
 
 @dataclass(frozen=True)
+class NumericCertificateAnalysisSpec(BaseAnalysisSpec):
+    """Stage-E strict envelope. `box` bounds are quoted strings, read exactly."""
+
+    expression: str = ""
+    box: dict[str, dict[str, str]] = field(default_factory=dict)
+    establish: str | None = None
+
+
+@dataclass(frozen=True)
 class PrecisionLadderAnalysisSpec(BaseAnalysisSpec):
     """Stage-D precision ladder. Tolerances are STRINGS so that a declared 1e-80
     is read exactly rather than through a float that cannot hold it."""
@@ -1064,6 +1073,34 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             tolerance=tolerance,
         )
 
+    if kind == "numeric_certificate":
+        _require_fields(data, {"expression", "box"}, context=f"Analysis {analysis_id!r}")
+        raw_box = data["box"]
+        if not isinstance(raw_box, dict) or not raw_box:
+            raise ProjectConfigError("numeric_certificate box must be a non-empty mapping")
+        nc_box: dict[str, dict[str, str]] = {}
+        for name, bounds in raw_box.items():
+            if not isinstance(bounds, dict) or {"lo", "hi"} - set(bounds):
+                raise ProjectConfigError(
+                    "numeric_certificate box.%s needs `lo` and `hi`" % name)
+            for key in ("lo", "hi"):
+                if isinstance(bounds[key], float):
+                    raise ProjectConfigError(
+                        "numeric_certificate box.%s.%s is a YAML float, already "
+                        "rounded before the enclosure is built; quote it so the "
+                        "endpoint is exact" % (name, key))
+            nc_box[str(name)] = {"lo": str(bounds["lo"]), "hi": str(bounds["hi"])}
+        establish = data.get("establish")
+        if establish is not None and str(establish) not in (">", ">=", "<", "<="):
+            raise ProjectConfigError(
+                "numeric_certificate establish must be one of >, >=, <, <=")
+        return NumericCertificateAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            box=nc_box,
+            establish=None if establish is None else str(establish),
+        )
+
     if kind == "precision_ladder":
         _require_fields(data, {"expression", "points"},
                         context=f"Analysis {analysis_id!r}")
@@ -1216,7 +1253,7 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
         "multiple_comparisons, cross_validation, model_comparison, symbolic, "
-        "numerical_soundness, cross_method, cross_backend, precision_ladder, or formal_check"
+        "numerical_soundness, cross_method, cross_backend, precision_ladder, numeric_certificate, or formal_check"
     )
 
 
