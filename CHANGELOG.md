@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.7.0 — 2026-08-18
+
+FELRA v1.7.0 — stage B, external multi-precision data ingestion. With this the
+addendum's six stages are all implemented.
+
+### A correction first
+
+When v1.2.0 shipped, this project recorded that stage B was already satisfied
+because the dataset layer handles contracts, hashes, propositions, provenance,
+replay and export. That was a judgement, not a check, and it was **wrong**. The
+dataset layer accepted only `float`, `int`, `bool` and `str`, so externally
+produced exact data had to be declared either `float` — discarding the producer's
+precision before FELRA had seen it — or `str`, which keeps the text while losing
+that it is a number. Neither is ingestion.
+
+### Added
+
+- **`exact` columns.** A cell is read with the exact-string parser and kept as an
+  exact rational with its provenance. `1/3` stays `1/3`; the same cell in a `float`
+  column is `6004799503160661/18014398509481984`, and a `float` column cannot read
+  `1/3` at all.
+- **`interval` columns**, written `lo|hi` (also `..` or `;`). A single value is a
+  degenerate interval rather than an error, and an inverted one is refused.
+- **A missing exact value is absent, not `NaN`.** There is no exact NaN, and
+  filling one with a float sentinel would put a number where the producer recorded
+  nothing — which later arithmetic would treat as one.
+- `examples/exact_dataset/`, where the same CSV carries a value in an `exact`
+  column and in a `float` column so the difference is visible rather than
+  described.
+
+### Stage coverage against section 16
+
+| stage | | version |
+| --- | --- | --- |
+| A | 治理先行 | 1.2.0 |
+| B | 外部多精度資料接入 | **1.7.0** |
+| C | 原生 Decimal／Rational | 1.3.0 |
+| D | 原生任意精度 | 1.4.0 (ladder), 1.6.0 (`binary_mp`) |
+| E | 嚴格包絡 | 1.5.0 |
+| F | 符號與形式化橋接 | 1.1.0 (SMT/Lean/TLC), 1.3.1 (`axioms_within`), 1.5.0 (certificate recovery) |
+
+Acceptance 18.1–18.5 are all met. What section 16's stage F still names and this
+package does not have is **proof-obligation export** — generating an obligation
+for an external prover from a FELRA claim, rather than checking one a human wrote.
+
 ## 1.6.0 — 2026-08-18
 
 FELRA v1.6.0 — the `binary_mp` backend, completing stage D's registry, and the

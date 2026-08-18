@@ -1,0 +1,40 @@
+project:
+  id: exact-dataset-demo
+  title: Ingesting externally produced exact data without rounding it
+  language: en
+
+# Addendum stage B: an external script produces exact rational, Decimal,
+# arbitrary-precision or interval data, and FELRA handles the contract, the
+# hashes, the propositions, the provenance and the replay.
+#
+# Before v1.7.0 a column could only be `float` — which discards the producer's
+# precision before FELRA has seen it — or `str`, which keeps the text while losing
+# that it is a number. `exact` and `interval` keep both.
+
+numeric_policy:
+  default_backend: rational
+  source_parsing: exact_string
+
+datasets:
+  measurements:
+    path: measurements.csv
+    format: csv
+    columns:
+      label: str
+      exact_value: exact
+      enclosure: interval
+      rounded_value: float
+
+parameters:
+  x:
+    type: float
+    range: [0.0, 1.0]
+    samples: 5
+
+claims:
+  - id: exact_column_survives_the_round_trip
+    statement: A value declared exact is not rounded on load
+    expression: x >= 0
+    status: hypothesis
+    required_checks:
+      - numerical

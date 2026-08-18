@@ -75,7 +75,12 @@ class DatasetColumnSpec:
             required = bool(data.get("required", True))
         else:
             raise ProjectConfigError(f"Dataset column {name!r} must be a type string or mapping")
-        if kind not in {"float", "int", "str", "bool"}:
+        # Stage B: externally produced exact data. `exact` keeps the literal
+        # text and an exact Fraction; `interval` keeps a pair of them. Neither
+        # rounds on load, which is the whole point — a column typed `float`
+        # discards the producer's precision before FELRA has seen it, and a
+        # column typed `str` keeps the text while losing that it is a number.
+        if kind not in {"float", "int", "str", "bool", "exact", "interval"}:
             raise ProjectConfigError(f"Dataset column {name!r} has unsupported type {kind!r}")
         return cls(name=name, kind=kind, required=required)
 
