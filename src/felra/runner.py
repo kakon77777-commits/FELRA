@@ -23,6 +23,7 @@ from felra.figures import FigureFactory
 from felra.models import Claim, EvidenceBundle
 from felra.preregistration import PreregistrationError, verify_preregistration
 from felra.provenance import build_provenance, write_provenance
+from felra.numeric_policy import describe_numeric_environment, evidence_status
 from felra.reproducibility import result_sha256, write_replay_project
 from felra.registry import append_registry_record, build_registry_record, resolve_registry_path
 from felra.sampling import (
@@ -328,6 +329,36 @@ def run_project(project_file: str | Path, output_dir: str | Path) -> ProjectRun:
     return run
 
 
+def _formal_results(run: ProjectRun) -> list[dict[str, Any]]:
+    return [
+        analysis.metrics
+        for analysis in run.analyses
+        if analysis.kind == "formal_check" and analysis.metrics.get("formal_status")
+    ]
+
+
+def _numeric_section(run: ProjectRun) -> dict[str, Any] | None:
+    policy = getattr(run.project, "numeric_policy", None)
+    if policy is None:
+        return None
+    section = policy.as_dict()
+    section["environment"] = describe_numeric_environment()
+    section["conversion_history"] = []
+    section["note"] = (
+        "stage A records the policy; it does not change how anything is computed. "
+        "`declared_but_not_implemented` lists what this version does not yet honour."
+    )
+    return section
+
+
+def _evidence_section(run: ProjectRun) -> dict[str, Any]:
+    return evidence_status(
+        executed=True,
+        reproduced=None,
+        formal_results=_formal_results(run),
+        falsified=not run.passed,
+    )
+
 def _write_project_manifest(run: ProjectRun) -> None:
     environment = {
         "python": sys.version.split()[0],
@@ -353,6 +384,11 @@ def _write_project_manifest(run: ProjectRun) -> None:
         "config_sha256": _config_hash(run.project),
         "result_sha256": result_sha256(run),
         "environment": environment,
+        # Stage A governance. Absent unless a policy was declared, so a project
+        # that predates v1.2.0 produces a byte-identical manifest shape and an
+        # unchanged result_sha256 (addendum 17.1, 17.3).
+        "numeric": _numeric_section(run),
+        "evidence_status": _evidence_section(run),
         "preregistration": run.preregistration,
         "replay_project": run.replay_project,
         "provenance": run.provenance_artifacts,

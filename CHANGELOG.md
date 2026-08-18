@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.2.0 — 2026-08-18
+
+FELRA v1.2.0 — stage A (治理先行) of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16. A numeric **governance**
+layer: it records and validates, and by design it changes nothing about how
+anything is computed. The native backends are stage C.
+
+### Added
+
+- **`numeric_policy:` project block** — the addendum's section 6 schema:
+  `default_backend`, `source_parsing`, `working_precision_bits`,
+  `target_accuracy_bits`, `rounding_mode`, `escalation`, `cross_backend`,
+  `certification.mode`. Every vocabulary is the addendum's, quoted rather than
+  invented, and an unrecognised term is **refused** rather than passed through.
+- **`declared_but_not_implemented`** — a policy may name a backend this version
+  does not have; the addendum permits that explicitly. What it must not do is let
+  a manifest imply the computation used it. So the manifest lists, item by item,
+  what was declared and not honoured, and records the backend that actually ran.
+- **Numeric environment record** (section 18.1) — computation backend, float
+  mantissa digits and rounding, interpreter and platform, plus the versions of the
+  libraries that will host the later backends, so a stage-C run can be compared
+  against a stage-A one rather than merely succeeding it.
+- **Evidence-level ladder** (section 11) — `executed`, `reproduced`,
+  `precision_stable`, `cross_backend_consistent`, `exact_verified`,
+  `numerically_certified`, `formally_proved`, plus `undetermined` and `falsified`.
+  The ladder is **cumulative**: `highest_level` is the tallest rung with no gap
+  below it, so a formal proof recorded above an unrun precision check does not
+  raise the level. Unreached rungs are `not_run`, never `not_applicable`.
+- v1.1.0's `formal_check` verdicts drive the `formally_proved` rung, so the two
+  features meet in the ladder instead of each inventing a status. A `verified`
+  mixed with an `unavailable` is `partial`, not a proof.
+- `examples/numeric_policy/` and `tests/test_v12.py` (14 tests).
+
+### Compatibility (addendum section 17), all tested
+
+- **17.1 / 17.3** — a project with no `numeric_policy` is unaffected: no manifest
+  section is added and its `result_sha256` is byte-identical to before. Verified
+  against `examples/reproducibility`, which still reproduces
+  `ec641760a43ff42fcc30d311b5587ec09e4817f6af425cb077a9e3c70f12608b` — the same
+  digest recorded at the v0.7 sync, now unchanged across v0.8 through v1.2 and a
+  Python version change.
+- **17.2** — nothing switches without the declaration.
+- **17.4** — declaring a policy separates the plan and result fingerprints, and
+  changing one separates them again.
+
+  The natural implementation satisfies one of 17.3 and 17.4 and breaks the other:
+  give every project a default policy object and the fingerprints separate
+  correctly while every legacy `result_sha256` moves. An undeclared policy is
+  therefore **absent**, not defaulted, and contributes nothing to the payload.
+
 ## 1.1.0 — 2026-08-18
 
 FELRA v1.1.0 — the first slice of the whitepaper's implementation roadmap stage 4

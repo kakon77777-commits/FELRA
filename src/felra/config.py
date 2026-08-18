@@ -6,6 +6,8 @@ from typing import Any, TypeAlias
 
 import yaml
 
+from felra.numeric_policy import NumericPolicy
+
 from felra.formal import BACKENDS as FORMAL_BACKENDS
 from felra.formal import FORMAL_STATUSES
 
@@ -1085,6 +1087,7 @@ class ProjectSpec:
     registry: RegistrySpec = field(default_factory=RegistrySpec)
     preregistration: PreregistrationSpec = field(default_factory=PreregistrationSpec)
     source_path: Path | None = None
+    numeric_policy: NumericPolicy | None = None
     raw: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
@@ -1266,6 +1269,7 @@ def load_project(path: str | Path) -> ProjectSpec:
         registry=RegistrySpec.from_mapping(raw.get("registry")),
         preregistration=PreregistrationSpec.from_mapping(raw.get("preregistration")),
         source_path=source.resolve(),
+        numeric_policy=NumericPolicy.from_mapping(raw.get("numeric_policy")),
         raw=raw,
     )
     _validate_analysis_references(project)

@@ -63,8 +63,27 @@ def result_payload(run: Any) -> dict[str, Any]:
     }
 
 
+def _numeric_policy_digest(run: Any) -> str | None:
+    """The declared policy's digest, or None when nothing was declared.
+
+    This is the whole of addendum 17.3/17.4 in one function. A project with no
+    `numeric_policy` contributes NOTHING to the payload, so its result_sha256 is
+    byte-identical to what it was before this layer existed; a project that
+    declares one, or changes one, gets a different digest and therefore a
+    different result hash even when the numbers are unchanged. A run under a
+    different declared policy is a different run.
+    """
+    policy = getattr(getattr(run, "project", None), "numeric_policy", None)
+    return policy.digest() if policy is not None else None
+
+
 def result_sha256(run: Any) -> str:
-    payload = json.dumps(result_payload(run), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    body = result_payload(run)
+    digest = _numeric_policy_digest(run)
+    if digest is not None:
+        body = dict(body)
+        body["numeric_policy_sha256"] = digest
+    payload = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
