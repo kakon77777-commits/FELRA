@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -111,6 +112,8 @@ class FormalOutcome:
     stdout_tail: str = ""
     assumptions: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
+    theorems_audited: int | None = None
+    axioms_seen: list[str] | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -127,6 +130,8 @@ class FormalOutcome:
             "stdout_tail": self.stdout_tail,
             "assumptions": list(self.assumptions),
             "limitations": list(self.limitations),
+            "theorems_audited": self.theorems_audited,
+            "axioms_seen": list(self.axioms_seen) if self.axioms_seen else None,
         }
 
 
@@ -247,14 +252,66 @@ def identify_checker(backend: str, *, project_dir: Path | None = None,
     )
 
 
-def _verdict_lean(exit_code: int, out: str) -> tuple[str, str]:
+#: Lean's own three. A development whose theorems need nothing else is what
+#: "machine-checked" is usually taken to mean, so the set is named rather than
+#: assumed and a project must declare it.
+LEAN_STANDARD_AXIOMS = ("propext", "Classical.choice", "Quot.sound")
+
+_AXIOM_LINE = re.compile(r"'([^']+)' depends on axioms: \[([^\]]*)\]")
+_AXIOM_FREE = re.compile(r"'([^']+)' does not depend on any axioms")
+
+
+def parse_lean_axioms(out: str) -> dict[str, list[str]]:
+    """Every theorem Lean reported on, and what it rests on.
+
+    `#print axioms` has TWO output forms and a theorem depending on nothing prints
+    the second one. Reading only the first silently drops the cleanest theorems in
+    a development from the audit.
+    """
+    found: dict[str, list[str]] = {}
+    for name, axioms in _AXIOM_LINE.findall(out):
+        found[name] = sorted({a.strip() for a in axioms.split(",") if a.strip()})
+    for name in _AXIOM_FREE.findall(out):
+        found.setdefault(name, [])
+    return found
+
+
+def _verdict_lean(exit_code: int, out: str,
+                  axioms_within: tuple[str, ...] | None = None) -> tuple[str, str]:
     if exit_code != 0:
         return "refuted", "the Lean file did not compile (exit %d)" % exit_code
     if "error:" in out:
         return "refuted", "Lean reported an error while elaborating the file"
     if "sorry" in out.lower():
         return "unknown", "Lean reported a `sorry`, so the obligation is incomplete"
-    return "verified", "Lean elaborated the obligation with no error"
+
+    if axioms_within is None:
+        return "verified", "Lean elaborated the obligation with no error"
+
+    # An axiom claim about a file that audits nothing is the vacuous pass this
+    # whole package exists to refuse. `verified` here would mean "no theorem
+    # exceeded the allowed axioms" of an empty set of theorems.
+    reported = parse_lean_axioms(out)
+    if not reported:
+        return "unknown", (
+            "the obligation declared `axioms_within` but produced no `#print "
+            "axioms` output, so no theorem was audited; an axiom claim about "
+            "nothing is not a verified one"
+        )
+    allowed = set(axioms_within)
+    exceeded = {name: axioms for name, axioms in reported.items()
+                if not set(axioms) <= allowed}
+    if exceeded:
+        first = sorted(exceeded)[:3]
+        return "refuted", (
+            "%d of %d theorem(s) depend on an axiom outside the declared set, "
+            "e.g. %s" % (len(exceeded), len(reported),
+                         ", ".join("%s → %r" % (n, exceeded[n]) for n in first))
+        )
+    return "verified", (
+        "%d theorem(s) audited; every one depends only on the declared axioms (%s)"
+        % (len(reported), ", ".join(sorted(allowed)))
+    )
 
 
 def _verdict_tlc(exit_code: int, out: str) -> tuple[str, str]:
@@ -306,6 +363,7 @@ def run_backend(
     timeout: int = _TIMEOUT_DEFAULT,
     assumptions: list[str] | None = None,
     limitations: list[str] | None = None,
+    axioms_within: tuple[str, ...] | None = None,
 ) -> FormalOutcome:
     """Invoke `backend` on `obligation` and report a status plus its provenance.
 
@@ -373,11 +431,16 @@ def run_backend(
             limitations=limitations + ["timed out; no verdict was reached"],
         )
 
-    verdict, detail = {
-        "lean": _verdict_lean,
-        "tlc": _verdict_tlc,
-        "z3": _verdict_z3,
-    }[backend](exit_code, out)
+    if backend == "lean":
+        verdict, detail = _verdict_lean(exit_code, out, axioms_within)
+    elif backend == "tlc":
+        verdict, detail = _verdict_tlc(exit_code, out)
+    else:
+        verdict, detail = _verdict_z3(exit_code, out)
+
+    audited: dict[str, list[str]] = {}
+    if backend == "lean" and axioms_within is not None:
+        audited = parse_lean_axioms(out)
 
     return FormalOutcome(
         formal_status=verdict,
@@ -393,7 +456,12 @@ def run_backend(
         limitations=limitations + [
             "a formal verdict is relative to the obligation as written; it says "
             "nothing about whether the obligation states the intended claim"
-        ],
+        ] + ([
+            "the audit covers the theorems this file prints axioms for; a theorem "
+            "the file never mentions is outside it"
+        ] if audited else []),
+        theorems_audited=len(audited) or None,
+        axioms_seen=sorted({a for axioms in audited.values() for a in axioms}) or None,
     )
 
 

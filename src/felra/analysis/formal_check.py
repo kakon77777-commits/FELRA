@@ -87,6 +87,7 @@ def run_formal_check(
         timeout=spec.timeout_seconds,
         assumptions=list(spec.assumptions),
         limitations=list(spec.limitations),
+        axioms_within=spec.axioms_within,
     )
 
     met = outcome.formal_status == spec.expect

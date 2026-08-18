@@ -202,8 +202,8 @@ def test_tlc_verdict_refuses_to_resolve_a_transcript_exit_code_disagreement():
 def test_a_declared_path_is_honoured_before_PATH(tmp_path):
     """A locally installed checker need not be on PATH.
 
-    Added when z3 was installed under `D:\Ai\work together\tools\`: without
-    this, the only way to reach a checker was to put it on PATH, which is a
+    Added when z3 was installed under the shared tools directory: without this,
+    the only way to reach a checker was to put it on PATH, which is a
     machine-wide change made for one project's benefit.
     """
     fake = tmp_path / "not-a-real-z3"
@@ -228,3 +228,70 @@ def test_config_accepts_a_path_field(tmp_path):
     )
     spec = load_project(project).analyses[0]
     assert spec.path == "/somewhere/z3"
+
+
+def test_an_axiom_claim_about_nothing_is_not_verified():
+    """The vacuity guard, and the reason `axioms_within` is safe to have.
+
+    A file that prints no `#print axioms` audits no theorem. Reporting `verified`
+    there would mean "no theorem exceeded the allowed axioms" of an empty set —
+    the exact vacuous pass this package exists to refuse.
+    """
+    from felra.formal import _verdict_lean
+
+    status, detail = _verdict_lean(0, "", axioms_within=("propext",))
+    assert status == "unknown"
+    assert "audited" in detail and "not a verified one" in detail
+
+    # with no axiom claim declared, the same empty output is just a clean elaboration
+    assert _verdict_lean(0, "")[0] == "verified"
+
+
+def test_an_axiom_outside_the_declared_set_refutes():
+    from felra.formal import _verdict_lean
+
+    out = (
+        "'Collatz.good' depends on axioms: [propext, Quot.sound]\n"
+        "'Collatz.bad' depends on axioms: [propext, Collatz.myAxiom]\n"
+    )
+    status, detail = _verdict_lean(0, out, axioms_within=("propext", "Quot.sound"))
+    assert status == "refuted"
+    assert "Collatz.bad" in detail and "1 of 2" in detail
+
+
+def test_both_print_axioms_output_forms_are_read():
+    """A theorem depending on nothing prints the second form. Reading only the
+    first silently drops the cleanest theorems in a development from the audit."""
+    from felra.formal import parse_lean_axioms
+
+    parsed = parse_lean_axioms(
+        "'A' depends on axioms: [propext]\n"
+        "'B' does not depend on any axioms\n"
+    )
+    assert parsed == {"A": ["propext"], "B": []}
+    from felra.formal import _verdict_lean
+
+    status, detail = _verdict_lean(
+        0,
+        "'A' depends on axioms: [propext]\n"
+        "'B' does not depend on any axioms\n",
+        axioms_within=("propext",),
+    )
+    assert status == "verified"
+    assert "2 theorem(s)" in detail
+
+
+def test_axioms_within_is_refused_on_a_backend_that_cannot_honour_it(tmp_path):
+    project = tmp_path / "project.yaml"
+    project.write_text(
+        "project:\n  id: p\n  title: t\n"
+        "parameters:\n  x:\n    type: float\n    range: [0, 1]\n    samples: 3\n"
+        "analyses:\n"
+        "  - id: a\n    type: formal_check\n    title: t\n"
+        "    backend: z3\n    obligation: o.smt2\n"
+        "    axioms_within: [propext]\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ProjectConfigError) as exc:
+        load_project(project)
+    assert "only meaningful for the lean backend" in str(exc.value)

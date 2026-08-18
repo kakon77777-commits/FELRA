@@ -71,6 +71,23 @@ this binary, with this hash, said yes" is.
 - **Verdict mapping:** non-zero exit or `error:` in the output → `refuted`;
   `sorry` present → `unknown` (an incomplete proof is not a proof and is not a
   refutation); otherwise → `verified`.
+- **`axioms_within:`** turns "this file elaborates" into a claim about a whole
+  development. Lean's `#print axioms` output is parsed and every reported theorem
+  must rest only on the declared axioms; one that does not → `refuted`, naming it.
+
+  Three things make this safe to have:
+
+  * **Both output forms are read.** A theorem depending on nothing prints
+    "does not depend on any axioms", and reading only the bracketed form silently
+    drops the cleanest theorems in a development from the audit.
+  * **An axiom claim about nothing is `unknown`, never `verified`.** A file that
+    prints no axiom lines audits no theorem, and reporting success there would
+    mean "no theorem exceeded the allowed set" of an empty set.
+  * **It is refused on any other backend.** Declaring it for `z3` or `tlc` would
+    be a claim nothing checks, so the loader rejects it.
+
+  The count of theorems audited and the axioms actually seen are both recorded, so
+  a shrinking audit is visible rather than silent.
 - **Added:** 2026-08-18, v1.1.0.
 - **Validated against:** the `collatz-lean` development
   (`kakon77777-commits/collatz-lean`), `Collatz/AllOnes.lean`, 10,005 bytes, on a
@@ -78,6 +95,14 @@ this binary, with this hash, said yes" is.
   with Lake 5.0.0-src+d8b1897 / Lean 4.33.0. A real development rather than a toy
   file, because an adapter that has only met a passing one-liner has not been
   tested.
+
+  Then against the **whole** development via `axioms_within`: `Collatz/Audit.lean`,
+  **184 theorems audited, every one resting only on `propext`, `Classical.choice`
+  and `Quot.sound`**, in 15.8 s. That 184 independently agrees with the number the
+  development's own `gate/audit_axioms.py` reports — and the two reach it by
+  different routes, one scanning the sources for declarations and the other parsing
+  the checker's output. Two methods meeting on a count is worth more than either
+  asserting it.
 
 ### `tlc` — TLA+ model checker via `tla2tools.jar`
 
@@ -160,4 +185,4 @@ Deliberately absent, and each for a reason rather than by oversight:
 | date | version | change |
 | --- | --- | --- |
 | 2026-08-18 | 1.1.0 | Register created. `lean`, `tlc`, `z3` added. `formal_check` analysis type introduced with the four-valued status and the evidence/formal separation. TLC path-and-exit-code bug found during validation and fixed. |
-| 2026-08-18 | 1.3.0 | Z3 5.1.0 installed under `D:\Ai\work together	ools\`; the `z3` entry moves from *adapter present, never exercised* to **both verdict directions run against the real solver**. Adapters now accept a declared `path:`, so a locally installed checker need not be on `PATH`. Tool provenance recorded in `tools/README.md`, including the fact that Z3 publishes no checksum for this release, so its hashes are *recorded* rather than *verified* — unlike `tla2tools.jar`, whose SHA-1 matches a value written down independently in Neo.K's own v0.9 package. |
+| 2026-08-18 | 1.3.0 | `axioms_within` added to the `lean` backend, so a formal claim can be about a whole development rather than one file; validated against collatz-lean's 184 theorems. Z3 5.1.0 installed under `D:\Ai\work together	ools\`; the `z3` entry moves from *adapter present, never exercised* to **both verdict directions run against the real solver**. Adapters now accept a declared `path:`, so a locally installed checker need not be on `PATH`. Tool provenance recorded in `tools/README.md`, including the fact that Z3 publishes no checksum for this release, so its hashes are *recorded* rather than *verified* — unlike `tla2tools.jar`, whose SHA-1 matches a value written down independently in Neo.K's own v0.9 package. |

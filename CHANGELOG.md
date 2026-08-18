@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.3.1 — 2026-08-18
+
+### Added
+
+- **`axioms_within:` on the `lean` backend.** A formal claim can now be about a
+  whole development rather than one file: Lean's `#print axioms` output is parsed
+  and every reported theorem must rest only on the declared axioms. Validated
+  against `collatz-lean` — **184 theorems, all within `propext`,
+  `Classical.choice`, `Quot.sound`** — a count that independently agrees with that
+  development's own audit gate, reached by a different route.
+- The number of theorems audited and the axioms actually seen are recorded, so a
+  shrinking audit is visible rather than silent.
+
+### Guards
+
+- **An axiom claim about nothing is `unknown`, never `verified`.** A file printing
+  no axiom lines audits no theorem.
+- Both `#print axioms` output forms are read; a theorem depending on nothing uses
+  the second, and reading only the first drops the cleanest theorems from the audit.
+- `axioms_within` is refused on any backend that cannot honour it.
+
+### Fixed
+
+- Three defects found by driving v1.3.0 at the Collatz arm's anchor cocycle:
+  `decimal_prec` governed only the input conversion rather than the arithmetic; a
+  declared `tolerance` below `1e-30` was silently collapsed to zero; and
+  `falsified` was driven by "an analysis did not meet its expectation" rather than
+  by an actual counterexample. Each has a test that fails on the previous code.
+
 ## 1.3.0 — 2026-08-18
 
 FELRA v1.3.0 — stage C (原生 Decimal／Rational) of

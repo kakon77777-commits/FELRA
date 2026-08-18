@@ -474,6 +474,7 @@ class FormalCheckAnalysisSpec(BaseAnalysisSpec):
     assumptions: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     derives_from: tuple[str, ...] = ()
+    axioms_within: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -1113,6 +1114,11 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
         timeout_seconds = int(data.get("timeout_seconds", 900))
         if timeout_seconds <= 0:
             raise ProjectConfigError("formal_check timeout_seconds must be positive")
+        if data.get("axioms_within") is not None and fc_backend != "lean":
+            raise ProjectConfigError(
+                "formal_check axioms_within is only meaningful for the lean "
+                "backend; declaring it elsewhere would be a claim nothing checks"
+            )
         if fc_backend == "tlc" and not data.get("jar"):
             raise ProjectConfigError(
                 "formal_check backend tlc requires a `jar` path; FELRA does not ship "
@@ -1131,6 +1137,8 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             assumptions=tuple(str(x) for x in data.get("assumptions", ())),
             limitations=tuple(str(x) for x in data.get("limitations", ())),
             derives_from=tuple(str(x) for x in data.get("derives_from", ())),
+            axioms_within=(tuple(str(x) for x in data["axioms_within"])
+                           if data.get("axioms_within") is not None else None),
         )
 
     raise ProjectConfigError(
