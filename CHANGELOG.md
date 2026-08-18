@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.4.0 — 2026-08-18
+
+FELRA v1.4.0 — the precision ladder, stage D of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16, and the first version in
+which the evidence ladder's middle rungs are driven by analyses rather than left
+unrun.
+
+### Added
+
+- **`precision_ladder` analysis type.** One expression evaluated in Decimal at a
+  rising precision — `p_k = p_0·2^k` or `p_0 + k·Δp` — recording per level the
+  fields section 7 asks for: precision in both bits and digits, the result and its
+  hash, runtime, the difference from the previous level, and an accuracy estimate.
+- **Three outcomes, per section 18.2**: `stable`, `unstable`, `exhausted`.
+  `unstable` means the tail differences stopped shrinking, so the ladder saw
+  evidence against convergence; `exhausted` means it hit the declared ceiling with
+  the differences still shrinking, which is a resource fact rather than a
+  mathematical one. Neither is a pass — 不把未穩定結果標記為通過.
+- **The evidence ladder's `precision_stable`, `cross_backend_consistent` and
+  `exact_verified` rungs are now driven by real analyses.** A rung is `pass` only
+  when something ran and settled it; absence stays `not_run`, so the ladder cannot
+  climb on the lack of a check.
+
+### The stability test compares every pair, not consecutive ones
+
+Section 7.1 is explicit — 不應只比較一次 p 與 2p — and the reason is visible on a
+real quantity rather than a constructed one. `1 - (2/3)^150` is about `1 - 1.4e-27`.
+At 32 and 64 bits, which is 10 and 20 decimal digits, Decimal rounds it to
+**exactly 1 at both**. A two-level test therefore agrees perfectly and reports
+`stable` at the bottom rung **with the wrong answer**. Three levels reach 128 bits,
+where the value moves, and the false settle does not happen. There is a test that
+pins exactly this.
+
+### Where the accuracy estimate comes from
+
+`estimated_accuracy` is the ladder's own successive difference, never a comparison
+against a known answer — a check that only works where the answer is already known
+is not a check. Where an exact value *is* available it is reported separately, as a
+way of asking whether the estimate tracks the truth.
+
+### Fixed while building it
+
+- The first version of the ladder returned only `stable` and `exhausted`, so
+  `unstable` was **unreachable** — a status in the vocabulary that no run could
+  produce. All three are now reachable and each has a test.
+- The config error for a float tolerance now explains the YAML subtlety behind it:
+  `1e-80` is read as a string but `1.0e-80` as a float, so the same tolerance is
+  safe written one way and lossy the other.
+
 ## 1.3.1 — 2026-08-18
 
 ### Added

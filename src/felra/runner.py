@@ -364,9 +364,17 @@ def _evidence_section(run: ProjectRun) -> dict[str, Any]:
         not bundle.passed and any(result.counterexamples for result in bundle.results)
         for bundle in run.bundles
     )
+    ladders = [a for a in run.analyses if a.kind == "precision_ladder"]
+    backends = [a for a in run.analyses if a.kind == "cross_backend"]
     return evidence_status(
         executed=True,
         reproduced=None,
+        precision_stable=(all(a.success for a in ladders) if ladders else None),
+        cross_backend_consistent=(all(a.success for a in backends)
+                                  if backends else None),
+        exact_verified=(
+            all(a.metrics.get("exactness") == "exact_on_every_point"
+                for a in backends) if backends else None),
         formal_results=_formal_results(run),
         falsified=refuted,
     )

@@ -310,6 +310,9 @@ def evidence_status(
     *,
     executed: bool,
     reproduced: bool | None = None,
+    precision_stable: bool | None = None,
+    cross_backend_consistent: bool | None = None,
+    exact_verified: bool | None = None,
     formal_results: list[dict[str, Any]] | None = None,
     falsified: bool = False,
 ) -> dict[str, Any]:
@@ -324,6 +327,14 @@ def evidence_status(
     levels["executed"] = "pass" if executed else "fail"
     if reproduced is not None:
         levels["reproduced"] = "pass" if reproduced else "fail"
+    # A rung is only ever `pass` when something ran and settled it. `None` means
+    # nothing addressed it, which stays `not_run` — the ladder must not climb on
+    # the absence of a check.
+    for name, value in (("precision_stable", precision_stable),
+                        ("cross_backend_consistent", cross_backend_consistent),
+                        ("exact_verified", exact_verified)):
+        if value is not None:
+            levels[name] = "pass" if value else "fail"
 
     formal_results = formal_results or []
     if formal_results:

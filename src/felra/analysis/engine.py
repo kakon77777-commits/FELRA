@@ -6,6 +6,7 @@ from pathlib import Path
 from felra.analysis.bootstrap import run_bootstrap_ci
 from felra.analysis.cross_method import run_cross_method
 from felra.analysis.cross_backend import run_cross_backend
+from felra.analysis.precision_ladder import run_precision_ladder
 from felra.analysis.formal_check import run_formal_check
 from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
 from felra.analysis.models import AnalysisResult
@@ -25,6 +26,7 @@ from felra.config import (
     AnalysisSpec,
     BootstrapCIAnalysisSpec,
     CrossBackendAnalysisSpec,
+    PrecisionLadderAnalysisSpec,
     CrossMethodAnalysisSpec,
     FormalCheckAnalysisSpec,
     CrossValidationAnalysisSpec,
@@ -164,6 +166,8 @@ def run_analysis(
             result = run_numerical_soundness(spec, project, output_dir, output_root)
         elif isinstance(spec, CrossMethodAnalysisSpec):
             result = run_cross_method(spec, project, output_dir, output_root)
+        elif isinstance(spec, PrecisionLadderAnalysisSpec):
+            result = run_precision_ladder(spec, output_dir=output_dir)
         elif isinstance(spec, CrossBackendAnalysisSpec):
             result = run_cross_backend(spec, output_dir=output_dir)
         elif isinstance(spec, FormalCheckAnalysisSpec):

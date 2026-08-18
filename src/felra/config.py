@@ -7,6 +7,7 @@ from typing import Any, TypeAlias
 import yaml
 
 from felra.numeric_backends import NUMERIC_ONTOLOGIES
+from felra.precision_ladder import GROWTH_STRATEGIES
 from felra.numeric_policy import NumericPolicy
 
 from felra.formal import BACKENDS as FORMAL_BACKENDS
@@ -434,6 +435,22 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
     methods: tuple[CrossMethodSpec, ...] = ()
     precision_digits: int = 30
     tolerance: float = 1e-9
+
+
+@dataclass(frozen=True)
+class PrecisionLadderAnalysisSpec(BaseAnalysisSpec):
+    """Stage-D precision ladder. Tolerances are STRINGS so that a declared 1e-80
+    is read exactly rather than through a float that cannot hold it."""
+
+    expression: str = ""
+    points: tuple[dict[str, str], ...] = ()
+    initial_precision_bits: int = 64
+    strategy: str = "doubling"
+    step_bits: int = 64
+    max_precision_bits: int = 4096
+    consecutive_levels: int = 3
+    absolute_tolerance: str = "1e-80"
+    relative_tolerance: str = "1e-70"
 
 
 @dataclass(frozen=True)
@@ -1047,6 +1064,60 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             tolerance=tolerance,
         )
 
+    if kind == "precision_ladder":
+        _require_fields(data, {"expression", "points"},
+                        context=f"Analysis {analysis_id!r}")
+        pl_strategy = str(data.get("strategy", "doubling"))
+        if pl_strategy not in GROWTH_STRATEGIES:
+            raise ProjectConfigError(
+                "precision_ladder strategy must be one of %s"
+                % ", ".join(GROWTH_STRATEGIES))
+        pl_points = []
+        for item in data["points"]:
+            if not isinstance(item, dict):
+                raise ProjectConfigError("precision_ladder points must be mappings")
+            row = {}
+            for name, value in item.items():
+                if isinstance(value, float):
+                    raise ProjectConfigError(
+                        "precision_ladder point %s=%r is a YAML float, already "
+                        "rounded before the ladder starts; quote it" % (name, value))
+                row[str(name)] = str(value)
+            pl_points.append(row)
+        if not pl_points:
+            raise ProjectConfigError("precision_ladder requires a non-empty points list")
+        levels = int(data.get("consecutive_levels", 3))
+        if levels < 2:
+            raise ProjectConfigError(
+                "precision_ladder consecutive_levels must be at least 2; one level "
+                "compared with itself is not a stability test")
+        initial = int(data.get("initial_precision_bits", 64))
+        maximum = int(data.get("max_precision_bits", 4096))
+        if initial < 1 or maximum < initial:
+            raise ProjectConfigError(
+                "precision_ladder needs 1 <= initial_precision_bits <= "
+                "max_precision_bits")
+        for key in ("absolute_tolerance", "relative_tolerance"):
+            if key in data and isinstance(data[key], float):
+                raise ProjectConfigError(
+                    "precision_ladder %s must be a quoted string; a YAML float "
+                    "cannot hold the magnitudes this field is for. Note that YAML "
+                    "reads `1e-80` as a string but `1.0e-80` as a float, so the "
+                    "same tolerance is safe written one way and lossy the other — "
+                    "quote it and the distinction stops mattering." % key)
+        return PrecisionLadderAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            points=tuple(pl_points),
+            initial_precision_bits=initial,
+            strategy=pl_strategy,
+            step_bits=int(data.get("step_bits", 64)),
+            max_precision_bits=maximum,
+            consecutive_levels=levels,
+            absolute_tolerance=str(data.get("absolute_tolerance", "1e-80")),
+            relative_tolerance=str(data.get("relative_tolerance", "1e-70")),
+        )
+
     if kind == "cross_backend":
         _require_fields(data, {"expression", "points"},
                         context=f"Analysis {analysis_id!r}")
@@ -1145,7 +1216,7 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
         "multiple_comparisons, cross_validation, model_comparison, symbolic, "
-        "numerical_soundness, cross_method, cross_backend, or formal_check"
+        "numerical_soundness, cross_method, cross_backend, precision_ladder, or formal_check"
     )
 
 
