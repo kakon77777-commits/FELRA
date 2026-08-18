@@ -50,6 +50,7 @@ def run_formal_check(
     if project_dir is not None and not project_dir.is_absolute():
         project_dir = (base_dir / project_dir).resolve()
     jar = resolve_env_path(spec.jar)
+    exe_path = resolve_env_path(spec.path)
     config_file = resolve_env_path(spec.config_file)
     if config_file is not None and not config_file.is_absolute():
         config_file = (base_dir / config_file).resolve()
@@ -81,6 +82,7 @@ def run_formal_check(
         obligation,
         project_dir=project_dir,
         jar=jar,
+        path=exe_path,
         config=config_file,
         timeout=spec.timeout_seconds,
         assumptions=list(spec.assumptions),

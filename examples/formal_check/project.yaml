@@ -8,6 +8,9 @@ project:
 #
 #   * `tlc_counter_bounded` runs only if TLA2TOOLS_JAR points at a real
 #     tla2tools.jar. FELRA does not ship or download one.
+#   * `z3_exact_sum` and `z3_counter_model` run only if Z3_EXE points at a z3
+#     binary. They exercise BOTH directions of the solver's verdict, because an
+#     adapter that has only ever seen `unsat` has not been tested.
 #   * `absent_checker_is_recorded_not_skipped` points at a jar that does not
 #     exist, on any machine, so it demonstrates the rule that matters most:
 #     a checker that did not run is recorded as `unavailable` and never as a
@@ -70,3 +73,31 @@ analyses:
       - claim:counter_stays_bounded
     limitations:
       - this analysis exists to show that `unavailable` is a first-class outcome
+
+  - id: z3_exact_sum
+    type: formal_check
+    title: z3 proves in the reals what cross_backend measures in the rationals
+    claim_id: counter_stays_bounded
+    backend: z3
+    obligation: exact_sum.smt2
+    path: ${Z3_EXE}
+    expect: verified
+    derives_from:
+      - analysis:classic_float_residue
+    assumptions:
+      - the SMT encoding states the same identity the rational evaluation does
+    limitations:
+      - real arithmetic in z3 is not float64 arithmetic; this says nothing about
+        what a float64 implementation computes
+
+  - id: z3_counter_model
+    type: formal_check
+    title: The refuted direction, exercised by the same solver
+    claim_id: counter_stays_bounded
+    backend: z3
+    obligation: counter_model.smt2
+    path: ${Z3_EXE}
+    expect: refuted
+    limitations:
+      - this obligation is satisfiable on purpose; `refuted` here is the correct
+        outcome and not a defect

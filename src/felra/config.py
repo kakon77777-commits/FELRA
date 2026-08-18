@@ -467,6 +467,7 @@ class FormalCheckAnalysisSpec(BaseAnalysisSpec):
     obligation: str = ""
     project_dir: str | None = None
     jar: str | None = None
+    path: str | None = None
     config_file: str | None = None
     expect: str = "verified"
     timeout_seconds: int = 900
@@ -1123,6 +1124,7 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             obligation=obligation,
             project_dir=(str(data["project_dir"]) if data.get("project_dir") else None),
             jar=(str(data["jar"]) if data.get("jar") else None),
+            path=(str(data["path"]) if data.get("path") else None),
             config_file=(str(data["config_file"]) if data.get("config_file") else None),
             expect=expect,
             timeout_seconds=timeout_seconds,

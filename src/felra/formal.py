@@ -150,8 +150,8 @@ def _run(command: list[str], cwd: Path | None, timeout: int) -> tuple[int, str, 
 # adapters
 
 
-def _identify_lean(project_dir: Path | None) -> CheckerIdentity:
-    exe = shutil.which("lake")
+def _identify_lean(project_dir: Path | None, path: Path | None = None) -> CheckerIdentity:
+    exe = str(path) if path and path.exists() else shutil.which("lake")
     if exe is None:
         return CheckerIdentity(
             backend="lean",
@@ -203,13 +203,18 @@ def _identify_tlc(jar: Path | None) -> CheckerIdentity:
     )
 
 
-def _identify_z3() -> CheckerIdentity:
-    exe = shutil.which("z3")
+def _identify_z3(path: Path | None = None) -> CheckerIdentity:
+    # A declared path is honoured before PATH, so a project can name a locally
+    # installed solver without it being on PATH and without FELRA depending on
+    # one. Same shape as the `jar` field the TLC adapter already required.
+    exe = str(path) if path and path.exists() else shutil.which("z3")
     if exe is None:
         return CheckerIdentity(
             backend="z3",
             available=False,
-            note="`z3` is not on PATH; FELRA does not depend on it",
+            executable_path=str(path) if path else None,
+            note="`z3` was not found at the declared `path` nor on PATH; FELRA "
+                 "does not depend on it",
         )
     try:
         _rc, out, _d = _run([exe, "--version"], None, 120)
@@ -227,14 +232,15 @@ def _identify_z3() -> CheckerIdentity:
 
 
 def identify_checker(backend: str, *, project_dir: Path | None = None,
-                     jar: Path | None = None) -> CheckerIdentity:
+                     jar: Path | None = None,
+                     path: Path | None = None) -> CheckerIdentity:
     """Resolve which program would run, without running the obligation."""
     if backend == "lean":
-        return _identify_lean(project_dir)
+        return _identify_lean(project_dir, path)
     if backend == "tlc":
         return _identify_tlc(jar)
     if backend == "z3":
-        return _identify_z3()
+        return _identify_z3(path)
     raise ValueError(
         "unknown formal backend %r; known backends are %s. Backends are a closed "
         "set on purpose — see docs/FORMAL_BACKENDS.md." % (backend, ", ".join(BACKENDS))
@@ -296,6 +302,7 @@ def run_backend(
     project_dir: Path | None = None,
     jar: Path | None = None,
     config: Path | None = None,
+    path: Path | None = None,
     timeout: int = _TIMEOUT_DEFAULT,
     assumptions: list[str] | None = None,
     limitations: list[str] | None = None,
@@ -306,7 +313,8 @@ def run_backend(
     malformed (unknown backend, missing obligation file), because a malformed
     request must not be reported as a formal outcome at all.
     """
-    identity = identify_checker(backend, project_dir=project_dir, jar=jar)
+    identity = identify_checker(backend, project_dir=project_dir, jar=jar,
+                                path=path)
     assumptions = list(assumptions or [])
     limitations = list(limitations or [])
 

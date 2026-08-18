@@ -112,17 +112,30 @@ this binary, with this hash, said yes" is.
 ### `z3` — SMT solver
 
 - **Program invoked:** `z3 <obligation>` on an SMT-LIB2 file.
-- **Availability:** requires `z3` on `PATH`. Absent → `unavailable`. FELRA does
-  **not** take a dependency on `z3-solver`; see `AGENTS.md` §12.
+- **Availability:** a declared `path:` is honoured first, then `PATH`. Absent →
+  `unavailable`. FELRA does **not** take a dependency on `z3-solver`; see
+  `AGENTS.md` §12.
 - **Verdict mapping:** `unsat` → `verified` (the negated obligation has no model);
   `sat` → `refuted` (a counter-model exists); anything else → `unknown`.
 - **Added:** 2026-08-18, v1.1.0.
-- **Validated against:** the **absent** path only. `z3` is not installed on the
-  machine where this backend was written, so its `unavailable` behaviour is
-  exercised by `tests/test_v11.py` and its `unsat`/`sat` mapping has **not** been
-  run against a real solver. This is recorded rather than glossed: the adapter is
-  present and honest about not having been exercised, which is not the same as
-  being validated. Anyone with `z3` installed should run it and amend this entry.
+- **Validated against:** initially the **absent** path only — z3 was not installed
+  on the machine where the adapter was written, and that was recorded here rather
+  than glossed. Z3 5.1.0 (x64 Windows) was installed on 2026-08-18 and **both
+  directions are now exercised by the real solver**:
+
+  | obligation | z3 says | adapter reports |
+  | --- | --- | --- |
+  | `examples/formal_check/exact_sum.smt2` | `unsat` | `verified` |
+  | `examples/formal_check/counter_model.smt2` | `sat` | `refuted` |
+
+  The satisfiable obligation exists precisely so the `refuted` path is run rather
+  than assumed: an adapter that has only ever seen `unsat` has not been tested.
+
+  `exact_sum.smt2` is the same identity `examples/cross_backend` measures in exact
+  rational arithmetic, posed to a different instrument as a proof obligation in
+  the reals. Two channels meeting on one fact is worth more than either alone —
+  and they answer *different* questions, so agreement is informative rather than
+  circular.
 
 ---
 
@@ -147,3 +160,4 @@ Deliberately absent, and each for a reason rather than by oversight:
 | date | version | change |
 | --- | --- | --- |
 | 2026-08-18 | 1.1.0 | Register created. `lean`, `tlc`, `z3` added. `formal_check` analysis type introduced with the four-valued status and the evidence/formal separation. TLC path-and-exit-code bug found during validation and fixed. |
+| 2026-08-18 | 1.3.0 | Z3 5.1.0 installed under `D:\Ai\work together	ools\`; the `z3` entry moves from *adapter present, never exercised* to **both verdict directions run against the real solver**. Adapters now accept a declared `path:`, so a locally installed checker need not be on `PATH`. Tool provenance recorded in `tools/README.md`, including the fact that Z3 publishes no checksum for this release, so its hashes are *recorded* rather than *verified* — unlike `tla2tools.jar`, whose SHA-1 matches a value written down independently in Neo.K's own v0.9 package. |

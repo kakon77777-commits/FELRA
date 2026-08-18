@@ -197,3 +197,34 @@ def test_tlc_verdict_refuses_to_resolve_a_transcript_exit_code_disagreement():
     assert status == "unknown"
     assert "disagree" in detail
     assert _verdict_tlc(12, "Error: Invariant Bounded is violated.")[0] == "refuted"
+
+
+def test_a_declared_path_is_honoured_before_PATH(tmp_path):
+    """A locally installed checker need not be on PATH.
+
+    Added when z3 was installed under `D:\Ai\work together\tools\`: without
+    this, the only way to reach a checker was to put it on PATH, which is a
+    machine-wide change made for one project's benefit.
+    """
+    fake = tmp_path / "not-a-real-z3"
+    identity = identify_checker("z3", path=fake)
+    if identity.available:  # pragma: no cover - a real z3 is on PATH here
+        pytest.skip("z3 is on PATH; the declared-path-absent case is untested here")
+    assert identity.available is False
+    # the declared path is reported, so the record says where it looked
+    assert identity.executable_path == str(fake)
+    assert identity.note and "declared `path`" in identity.note
+
+
+def test_config_accepts_a_path_field(tmp_path):
+    project = tmp_path / "project.yaml"
+    project.write_text(
+        "project:\n  id: p\n  title: t\n"
+        "parameters:\n  x:\n    type: float\n    range: [0, 1]\n    samples: 3\n"
+        "analyses:\n"
+        "  - id: a\n    type: formal_check\n    title: t\n"
+        "    backend: z3\n    obligation: o.smt2\n    path: /somewhere/z3\n",
+        encoding="utf-8",
+    )
+    spec = load_project(project).analyses[0]
+    assert spec.path == "/somewhere/z3"
