@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.3.0 — 2026-08-18
+
+FELRA v1.3.0 — stage C (原生 Decimal／Rational) of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16. Stage A let a project
+*declare* `default_backend: decimal`; this makes the declaration mean something.
+
+### Added
+
+- **Exact string parser.** `"0.1"` is read as exactly `1/10`. A bare `0.1` in
+  YAML is already a float64 before any backend sees it, so `cross_backend` points
+  must be **quoted** and the loader refuses an unquoted float with that reason.
+  Addendum section 2.2: 高精度型別不能修復早期損失.
+- **Decimal and Rational backends**, with `IMPLEMENTED_BACKENDS` grown in exactly
+  one place so `declared_but_not_implemented` cannot drift from what is真的 done.
+- **Conversion residual** (section 9) — `R = Decode(C(x)) − x`, computed in exact
+  rational arithmetic, so a float64 residual is the **true** error rather than a
+  rounded estimate of the error. Each conversion records from, to, rounding,
+  exactness, source and result hashes, and the residual bounds.
+- **`source_was_float64` is sticky** (section 9). A value that has been through
+  float64 carries the mark through every later promotion, so a high-precision
+  *copy* of a low-precision value can never be reported as a high-accuracy
+  result. `cross_backend` warns when any input arrived this way, because an
+  `exact` agreement about an already-rounded number is agreement about the wrong
+  number.
+- **`cross_backend` analysis type** (acceptance section 18.3) — one formulation
+  evaluated in float64, Decimal and Rational over declared points, with a
+  **difference matrix** and the required **three-valued** classification:
+  `exact` / `within_tolerance` / `inconsistent`. Two values would be the easy
+  design and the wrong one: "agrees to 1e-12" and "is the same number" are
+  different facts, and only the second can support the evidence ladder's
+  `exact_verified` rung.
+- `examples/cross_backend/` and `tests/test_v13.py` (10 tests).
+
+### How this differs from `cross_method` (v1.0.0)
+
+`cross_method` asks whether different **formulations** of a quantity agree —
+`(x²−1)/(x−1)` against `x+1`. `cross_backend` asks whether different **numeric
+ontologies** evaluating the same formulation agree. The first finds algebra
+errors, the second representation errors, and they fail on different inputs.
+`(0.1 + 0.2) − 0.3` has one formulation and three answers.
+
+### Refusals
+
+Arithmetic only: `+ - * /` and integer powers. A transcendental function has no
+exact rational value, so an ontology claiming exactness **refuses** it rather than
+falling back to float — that fallback is how a `cross_backend_consistent` result
+would come to mean three float64 runs agreeing with each other.
+
+### Note on the shipped example
+
+`examples/cross_backend` ends in ATTENTION REQUIRED on purpose: at zero tolerance
+float64 disagrees with the exact backends on two of its three points, and that
+disagreement is the demonstration. Like `examples/formal_check`, it is not part of
+the mandatory gate set in `AGENTS.md` section 8.
+
 ## 1.2.0 — 2026-08-18
 
 FELRA v1.2.0 — stage A (治理先行) of

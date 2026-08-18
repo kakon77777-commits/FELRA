@@ -52,17 +52,24 @@ def test_nonpositive_precision_is_refused():
 
 
 def test_a_declared_backend_is_not_silently_honoured():
-    # The addendum permits naming a backend before it exists. What it must not do
-    # is let a manifest imply the computation used it.
-    policy = NumericPolicy.from_mapping(
-        {"default_backend": "decimal", "source_parsing": "exact_string"}
-    )
+    """The addendum permits naming a backend before it exists. What it must not do
+    is let a manifest imply the computation used it.
+
+    This test originally named `decimal`, which v1.3.0 then implemented — so it
+    failed for the right reason and is rewritten to pin the INVARIANT rather than
+    the set of backends that happened to exist when it was written. `binary_mp` is
+    stage D and is the current example of a declared-but-absent backend.
+    """
+    policy = NumericPolicy.from_mapping({"default_backend": "binary_mp"})
     assert policy is not None
     pending = policy.declared_but_not_implemented()
-    assert any("decimal" in item for item in pending)
-    assert any("exact_string" in item for item in pending)
+    assert any("binary_mp" in item for item in pending)
     assert "float64" in IMPLEMENTED_BACKENDS
-    assert policy.as_dict()["implemented_backends"] == ["float64"]
+    assert "binary_mp" not in IMPLEMENTED_BACKENDS
+    # and a backend that IS implemented must not be listed as pending
+    implemented = NumericPolicy.from_mapping({"default_backend": "float64"})
+    assert implemented is not None
+    assert implemented.declared_but_not_implemented() == []
 
 
 def test_float64_only_policy_has_nothing_pending():

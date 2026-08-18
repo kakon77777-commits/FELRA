@@ -111,9 +111,10 @@ ROUNDING_MODES = (
 #: declaration of an unimplemented backend must be *reported*, not honoured.
 NUMERIC_BACKENDS = ("float64", "decimal", "rational", "binary_mp", "interval", "ball")
 
-#: What this version can actually compute in. Stage A adds none: the engine is
-#: untouched by design.
-IMPLEMENTED_BACKENDS = ("float64",)
+#: What this version can actually compute in. Stage A added none by design;
+#: stage C (v1.3.0) adds decimal and rational, and this tuple is the ONLY place
+#: that claim is made, so `declared_but_not_implemented` cannot drift from it.
+IMPLEMENTED_BACKENDS = ("float64", "decimal", "rational")
 
 _ESCALATION_STRATEGIES = ("doubling", "linear", "fixed")
 
@@ -227,8 +228,9 @@ class NumericPolicy:
             )
         if self.source_parsing != "native":
             pending.append(
-                "source_parsing=%s (stage C; values are still parsed natively)"
-                % self.source_parsing
+                "source_parsing=%s (honoured by `cross_backend` points since "
+                "v1.3.0; parameters and datasets elsewhere are still parsed "
+                "natively)" % self.source_parsing
             )
         if self.escalation_enabled:
             pending.append("escalation (stage D precision ladder)")

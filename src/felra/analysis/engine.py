@@ -5,6 +5,7 @@ from pathlib import Path
 
 from felra.analysis.bootstrap import run_bootstrap_ci
 from felra.analysis.cross_method import run_cross_method
+from felra.analysis.cross_backend import run_cross_backend
 from felra.analysis.formal_check import run_formal_check
 from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
 from felra.analysis.models import AnalysisResult
@@ -23,6 +24,7 @@ from felra.cache import AnalysisCache, analysis_fingerprint
 from felra.config import (
     AnalysisSpec,
     BootstrapCIAnalysisSpec,
+    CrossBackendAnalysisSpec,
     CrossMethodAnalysisSpec,
     FormalCheckAnalysisSpec,
     CrossValidationAnalysisSpec,
@@ -162,6 +164,8 @@ def run_analysis(
             result = run_numerical_soundness(spec, project, output_dir, output_root)
         elif isinstance(spec, CrossMethodAnalysisSpec):
             result = run_cross_method(spec, project, output_dir, output_root)
+        elif isinstance(spec, CrossBackendAnalysisSpec):
+            result = run_cross_backend(spec, output_dir=output_dir)
         elif isinstance(spec, FormalCheckAnalysisSpec):
             # Paths in a formal_check are relative to the project file, not to the
             # process working directory, so a project stays portable.

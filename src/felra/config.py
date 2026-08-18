@@ -6,6 +6,7 @@ from typing import Any, TypeAlias
 
 import yaml
 
+from felra.numeric_backends import NUMERIC_ONTOLOGIES
 from felra.numeric_policy import NumericPolicy
 
 from felra.formal import BACKENDS as FORMAL_BACKENDS
@@ -433,6 +434,23 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
     methods: tuple[CrossMethodSpec, ...] = ()
     precision_digits: int = 30
     tolerance: float = 1e-9
+
+
+@dataclass(frozen=True)
+class CrossBackendAnalysisSpec(BaseAnalysisSpec):
+    """Stage-C cross-ontology comparison.
+
+    `points` are lists of EXACT STRINGS on purpose: writing `0.1` as a YAML float
+    would round the value before any backend saw it, and the analysis would then
+    compare three ontologies' opinions of an already-rounded number.
+    """
+
+    expression: str = ""
+    backends: tuple[str, ...] = ("float64", "decimal", "rational")
+    points: tuple[dict[str, str], ...] = ()
+    tolerance: float = 1e-12
+    decimal_prec: int = 50
+    report_points: int = 20
 
 
 @dataclass(frozen=True)
@@ -1027,6 +1045,54 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             tolerance=tolerance,
         )
 
+    if kind == "cross_backend":
+        _require_fields(data, {"expression", "points"},
+                        context=f"Analysis {analysis_id!r}")
+        cb_backends = tuple(str(x) for x in data.get(
+            "backends", ("float64", "decimal", "rational")))
+        if len(cb_backends) < 2:
+            raise ProjectConfigError("cross_backend requires at least two backends")
+        if len(cb_backends) != len(set(cb_backends)):
+            raise ProjectConfigError("cross_backend backends must be unique")
+        for backend in cb_backends:
+            if backend not in NUMERIC_ONTOLOGIES:
+                raise ProjectConfigError(
+                    "cross_backend backend must be one of %s"
+                    % ", ".join(NUMERIC_ONTOLOGIES)
+                )
+        raw_points = data["points"]
+        if not isinstance(raw_points, list) or not raw_points:
+            raise ProjectConfigError("cross_backend requires a non-empty points list")
+        cb_points = []
+        for item in raw_points:
+            if not isinstance(item, dict):
+                raise ProjectConfigError("cross_backend points must be mappings")
+            row = {}
+            for name, value in item.items():
+                if isinstance(value, float):
+                    raise ProjectConfigError(
+                        "cross_backend point %s=%r is a YAML float, which has "
+                        "already been rounded before any backend sees it; quote it "
+                        "as a string so it can be parsed exactly" % (name, value)
+                    )
+                row[str(name)] = str(value)
+            cb_points.append(row)
+        cb_tolerance = float(data.get("tolerance", 1e-12))
+        if cb_tolerance < 0:
+            raise ProjectConfigError("cross_backend tolerance must not be negative")
+        cb_prec = int(data.get("decimal_prec", 50))
+        if cb_prec < 1:
+            raise ProjectConfigError("cross_backend decimal_prec must be positive")
+        return CrossBackendAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            backends=cb_backends,
+            points=tuple(cb_points),
+            tolerance=cb_tolerance,
+            decimal_prec=cb_prec,
+            report_points=int(data.get("report_points", 20)),
+        )
+
     if kind == "formal_check":
         _require_fields(data, {"backend", "obligation"}, context=f"Analysis {analysis_id!r}")
         fc_backend = str(data["backend"])
@@ -1069,7 +1135,7 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
         "multiple_comparisons, cross_validation, model_comparison, symbolic, "
-        "numerical_soundness, cross_method, or formal_check"
+        "numerical_soundness, cross_method, cross_backend, or formal_check"
     )
 
 
