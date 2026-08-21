@@ -7,7 +7,7 @@ from fractions import Fraction
 import pytest
 
 from felra.certificates import Interval
-from felra.config import DatasetColumnSpec, ProjectConfigError
+from felra.config import ProjectConfigError
 from felra.data import _convert, _missing_value
 from felra.numeric_backends import ExactValue
 

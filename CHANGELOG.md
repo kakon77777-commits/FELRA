@@ -1,5 +1,129 @@
 # Changelog
 
+## 1.8.0 — 2026-08-21
+
+FELRA v1.8.0 — proof-obligation export. This closes the one item the v1.7.0 notes
+listed as still missing: stage F asks FELRA to **generate** an obligation for an
+external prover, and every formal channel up to now could only **check** one
+somebody else had written.
+
+### Added
+
+- **`obligation_export` analysis type.** It renders a FELRA claim as SMT-LIB2 —
+  `(set-logic AUFNIRA)`, the declared domain of every parameter, and the
+  **negation** of the claim — so `unsat` means no counterexample exists on that
+  domain and `sat` *is* a counterexample. The file is written whether or not a
+  backend is declared; with no backend the result says plainly that nothing was
+  proved, because an obligation nobody checked is a file.
+- **The discriminating twin.** Every export is checked twice, once as written and
+  once with the conclusion flipped. This is not a nicety. An exporter that emits a
+  trivially unsatisfiable obligation is reported `unsat` by any solver, for every
+  claim, forever — it would look exactly like a verifier that proves everything,
+  and each individual run would look like a success. Both coming back `unsat` means
+  the declared domain is empty, and the verdict is `unknown` with no certificate
+  issued.
+- **`scripts/drill_v18.py`**, FELRA's first drill. It plants defects in the
+  real source, runs the real suite against a real solver, and requires each defect
+  to be caught **by the check named for it** — a defect caught only by some other
+  test is recorded as a miss, because it means the named check is not aimed at what
+  it claims to cover. Reports 12/12.
+- `examples/obligation_export/`, carrying a true claim and a false one, so the
+  `refuted` path is exercised rather than assumed.
+
+### A correction, recorded rather than smoothed over
+
+The first version of the twin guard refused whenever the pair **agreed**. That is
+wrong. For a claim that holds at some points of its domain and fails at others,
+both the obligation and its twin are satisfiable, and that is the correct
+mathematical situation — so the guard turned a perfectly good refutation into
+`unknown`. What actually indicates a broken export is both coming back *unsat*.
+
+The error did not surface from re-reading the code. It surfaced from running a
+claim known to be false (`x >= 1` on `[-2, 3]`) and finding the answer was not the
+one arithmetic says it should be. Both cases are now pinned by tests, and the
+false claim ships in the example project.
+
+### Refusals, on purpose
+
+- **Lean and Coq are not generated**, though stage F names them. Producing a proof
+  script that both typechecks and states the intended thing is a different problem
+  from translating an expression; the attempt would emit artifacts that mostly fail
+  to compile and occasionally compile while meaning something else. The second kind
+  is worse than no feature.
+- **The translator refuses whatever it cannot render exactly**, with a reason —
+  function calls, non-literal or non-integer exponents, a numeric expression used
+  as a truth value. A finite value list becomes a disjunction, never a range: an
+  obligation that is *nearly* the claim is an obligation about a different claim.
+
+### Fixed — two reproducibility defects that had shipped since v1.1.0
+
+Neither was introduced by this release. Both were found while checking whether the
+*new* analysis type was reproducible, which is the only reason anyone ran an
+existing project twice and compared.
+
+- **A stopwatch reading was inside the fingerprint.** `duration_seconds` entered
+  the hashed payload with the formal backends in v1.1.0. From that version until
+  this one, **every formal analysis produced a different `result_sha256` on every
+  run**, because a solver that answers in 24ms on one run and 25ms on the next is
+  a different result as far as the hash was concerned. `felra replay` therefore
+  reported MISMATCH on projects nobody had touched. Wall-clock readings and
+  filesystem paths are now excluded; the content hashes recorded beside them say
+  *which* obligation was checked, and say it better, since a hash survives being
+  moved.
+
+  Measured blast radius: of the nine shipped examples, seven have a fingerprint
+  **byte-identical** to before this change, and the two that moved (`formal_check`,
+  `obligation_export`) had no stable fingerprint to preserve.
+
+- **`felra replay` never handed the obligation to the checker.** Datasets have
+  always been captured into the run directory, with the replay project rewritten to
+  point at those copies. Formal obligations were not captured at all — so replaying
+  an untouched `formal_check` project reported *"the declared obligation does not
+  exist"* for every analysis, and MISMATCH for the project. That reads as **the
+  result did not reproduce**, when what actually happened is that nothing was
+  checked. Obligations (and a TLC `.cfg`, which travels with its `.tla`) are now
+  captured alongside datasets, filenames preserved.
+
+  An obligation declared as `${VAR}` is expanded to *find* the file and then
+  rewritten to the run's own copy, so a replay depends on neither the variable nor
+  the machine. An unset variable leaves the declaration untouched and replay
+  reports it missing, which is the truth about that run.
+
+`obligation_export` replays correctly either way — it generates its obligation from
+the claim, so there is no external file to lose. It is kept beside `formal_check` in
+the test so the check cannot pass for the wrong reason.
+
+### Fixed
+
+- A `\t` eaten by a shell heredoc had turned `D:\Ai\work together\tools\` into
+  `D:\Ai\work together<TAB>ools\` in the `docs/FORMAL_BACKENDS.md` history table.
+- Three pre-existing lint errors (two unused imports, one mid-file import) cleared
+  so the release ships with `ruff check src tests scripts` green.
+
+### The addendum's six stages, now all implemented
+
+| stage | | version |
+| --- | --- | --- |
+| A | 治理先行 | 1.2.0 |
+| B | 外部多精度資料接入 | 1.7.0 |
+| C | 原生 Decimal／Rational | 1.3.0 |
+| D | 原生任意精度 | 1.4.0 (ladder), 1.6.0 (`binary_mp`) |
+| E | 嚴格包絡 | 1.5.0 |
+| F | 符號與形式化橋接 | 1.1.0 (SMT/Lean/TLC), 1.3.1 (`axioms_within`), 1.5.0 (certificate recovery), **1.8.0 (obligation export)** |
+
+Stage F's list is complete except for Lean and Coq *generation*, which is refused
+above with its reason rather than left off the list.
+
+### Register
+
+`docs/FORMAL_BACKENDS.md` gains a section for the generating direction: what
+program is invoked (`z3`, through the adapter already registered — no new program
+and no new dependency), what is new (who writes the file the solver reads), what is
+deliberately not generated, and what the four-row verdict table was validated
+against. No new backend was added.
+
+Tests: 161 (was 135), no skips.
+
 ## 1.7.0 — 2026-08-18
 
 FELRA v1.7.0 — stage B, external multi-precision data ingestion. With this the

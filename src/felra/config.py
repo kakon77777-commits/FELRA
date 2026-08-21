@@ -443,6 +443,17 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
 
 
 @dataclass(frozen=True)
+class ObligationExportAnalysisSpec(BaseAnalysisSpec):
+    """Stage-F proof-obligation export. `claim_id` is required: this analysis
+    renders a CLAIM, so without one there is nothing to export."""
+
+    backend: str | None = None
+    path: str | None = None
+    expect: str = "verified"
+    timeout_seconds: int = 900
+
+
+@dataclass(frozen=True)
 class DecimalResidualAnalysisSpec(BaseAnalysisSpec):
     """§12's verification pack. `value` is a quoted string, read exactly."""
 
@@ -1087,6 +1098,36 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             methods=tuple(methods),
             precision_digits=cm_precision_digits,
             tolerance=tolerance,
+        )
+
+    if kind == "obligation_export":
+        if not base.get("claim_id"):
+            raise ProjectConfigError(
+                "obligation_export requires a claim_id; it renders a claim, so "
+                "without one there is nothing to export")
+        oe_backend = data.get("backend")
+        if oe_backend is not None:
+            oe_backend = str(oe_backend)
+            if oe_backend not in FORMAL_BACKENDS:
+                raise ProjectConfigError(
+                    "obligation_export backend must be one of %s"
+                    % ", ".join(FORMAL_BACKENDS))
+            if oe_backend != "z3":
+                raise ProjectConfigError(
+                    "only the z3 backend can check an exported obligation; the "
+                    "exporter emits SMT-LIB2, and handing it to a model checker or "
+                    "a proof assistant would be handing them a file they cannot read")
+        oe_expect = str(data.get("expect", "verified"))
+        if oe_expect not in FORMAL_STATUSES:
+            raise ProjectConfigError(
+                "obligation_export expect must be one of %s"
+                % ", ".join(FORMAL_STATUSES))
+        return ObligationExportAnalysisSpec(
+            **base,
+            backend=oe_backend,
+            path=(str(data["path"]) if data.get("path") else None),
+            expect=oe_expect,
+            timeout_seconds=int(data.get("timeout_seconds", 900)),
         )
 
     if kind == "decimal_residual":

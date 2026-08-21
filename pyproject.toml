@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "felra"
-version = "1.7.0"
+version = "1.8.0"
 description = "Python-first academic verification and visualization workbench for FELRA"
 readme = "README.md"
 requires-python = ">=3.10"

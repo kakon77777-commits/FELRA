@@ -9,12 +9,38 @@ from typing import Any
 import yaml
 
 
+#: Keys excluded from the fingerprint because they record **when or where a run
+#: happened**, not **what it computed**.
+#:
+#: `duration_seconds` and the path keys were added in v1.8.0, after measuring that
+#: `felra replay` reported MISMATCH on an *unmodified* formal project. A solver
+#: returning the same verdict in 24ms on one run and 25ms on the next is not
+#: nondeterminism; the mismatch was manufactured here, by putting a stopwatch
+#: reading inside an identity. Every formal analysis had been unreproducible since
+#: v1.1.0 for that reason alone.
+#:
+#: Dropping the paths costs nothing, because what a path was for — saying *which*
+#: obligation the solver read — is carried better by the `sha256` recorded beside
+#: it. A content hash survives being moved; a path does not.
+#:
+#: This list is a denylist, and a denylist only knows what someone remembered to
+#: add — which is exactly how `duration_seconds` slipped in for seven versions. So
+#: it is not the guard. The guard is `test_fingerprints_are_stable_across_runs`,
+#: which runs real projects twice and compares, and would have caught this on the
+#: day it was introduced without anyone having to think of the key's name.
+_NOT_PART_OF_THE_RESULT = frozenset({
+    "created_at", "cache_hit", "cache_fingerprint", "output_dir", "registry",
+    "duration_seconds",                     # wall clock
+    "path", "executable_path", "obligation_file", "twin_file",  # location
+})
+
+
 def _sanitize(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: _sanitize(item)
             for key, item in sorted(value.items())
-            if key not in {"created_at", "cache_hit", "cache_fingerprint", "output_dir", "registry"}
+            if key not in _NOT_PART_OF_THE_RESULT
         }
     if isinstance(value, list):
         return [_sanitize(item) for item in value]
@@ -87,6 +113,57 @@ def result_sha256(run: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _capture_obligations(run: Any, raw: dict[str, Any]) -> list[str]:
+    """Copy each declared formal obligation into the run, the way datasets are.
+
+    Datasets have always been captured: the replay project points at the run's own
+    normalized copy, so a replay reproduces *that run* rather than whatever the
+    source file happens to say later. Formal obligations were not, and the
+    consequence was not a subtle drift — `felra replay` on an untouched
+    `formal_check` project reported every analysis as "the declared obligation
+    does not exist" and the project as MISMATCH. The obligation was never handed
+    to the checker at all. That had been true since v1.1.0, and reads as "the
+    result failed to reproduce" when what happened is that nothing was checked.
+
+    The filename is preserved rather than normalized, because TLC requires a
+    module's file name to match the module, and a `.cfg` travels with its `.tla`.
+
+    A declared file that is missing at capture time is left alone. Replay will
+    then report it missing, which is the truth about that run.
+    """
+    from felra.formal import resolve_env_path
+
+    base_dir = run.project.source_path.parent if run.project.source_path else Path()
+    captured: list[str] = []
+    for analysis in raw.get("analyses") or []:
+        if analysis.get("type") != "formal_check":
+            continue
+        analysis_id = str(analysis.get("id", "analysis"))
+        for key in ("obligation", "config"):
+            declared = analysis.get(key)
+            if not declared:
+                continue
+            # `${VAR}` is expanded here to FIND the file, exactly as the runner
+            # expands it. That does not pin an environment into the replay project
+            # — it does the opposite: the declaration is rewritten to the run's own
+            # captured copy, so the replay depends on neither the variable nor the
+            # machine. An unset variable stays unexpanded, does not exist as a
+            # path, and its declaration is left untouched.
+            source = resolve_env_path(str(declared))
+            if source is None:
+                continue
+            if not source.is_absolute():
+                source = base_dir / source
+            if not source.exists():
+                continue
+            target_dir = run.output_dir / "obligations" / analysis_id
+            target_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target_dir / source.name)
+            analysis[key] = f"obligations/{analysis_id}/{source.name}"
+            captured.append(analysis[key])
+    return captured
+
+
 def write_replay_project(run: Any) -> Path:
     raw = json.loads(json.dumps(run.project.raw, ensure_ascii=False))
     for dataset_id, dataset_config in (raw.get("datasets") or {}).items():
@@ -95,6 +172,7 @@ def write_replay_project(run: Any) -> Path:
         dataset_config["encoding"] = "utf-8"
         dataset_config["delimiter"] = ","
         dataset_config["on_error"] = "error"
+    _capture_obligations(run, raw)
     raw["registry"] = {"enabled": False}
     raw["preregistration"] = {"enabled": False}
     execution = raw.setdefault("execution", {})

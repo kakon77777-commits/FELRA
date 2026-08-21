@@ -8,6 +8,7 @@ from felra.analysis.cross_method import run_cross_method
 from felra.analysis.cross_backend import run_cross_backend
 from felra.analysis.decimal_residual import run_decimal_residual
 from felra.analysis.numeric_certificate import run_numeric_certificate
+from felra.analysis.obligation_export import run_obligation_export
 from felra.analysis.precision_ladder import run_precision_ladder
 from felra.analysis.formal_check import run_formal_check
 from felra.analysis.cross_validation import run_cross_validation, run_model_comparison
@@ -30,6 +31,7 @@ from felra.config import (
     CrossBackendAnalysisSpec,
     DecimalResidualAnalysisSpec,
     NumericCertificateAnalysisSpec,
+    ObligationExportAnalysisSpec,
     PrecisionLadderAnalysisSpec,
     CrossMethodAnalysisSpec,
     FormalCheckAnalysisSpec,
@@ -170,6 +172,8 @@ def run_analysis(
             result = run_numerical_soundness(spec, project, output_dir, output_root)
         elif isinstance(spec, CrossMethodAnalysisSpec):
             result = run_cross_method(spec, project, output_dir, output_root)
+        elif isinstance(spec, ObligationExportAnalysisSpec):
+            result = run_obligation_export(spec, project, output_dir=output_dir)
         elif isinstance(spec, DecimalResidualAnalysisSpec):
             result = run_decimal_residual(spec, output_dir=output_dir)
         elif isinstance(spec, NumericCertificateAnalysisSpec):

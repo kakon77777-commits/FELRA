@@ -164,6 +164,69 @@ this binary, with this hash, said yes" is.
 
 ---
 
+## Generating obligations, not only checking them
+
+Everything above is an adapter over an obligation **somebody wrote**. From v1.8.0
+FELRA can also **render one from a claim** — the direction the addendum's stage F
+names, and the one with a failure mode the sections above do not have.
+
+- **Program invoked:** `z3`, through the adapter already registered above. No new
+  program is added, and no new dependency. What is new is who wrote the file the
+  solver reads.
+- **What is generated:** SMT-LIB2 only. `(set-logic AUFNIRA)`, the declared domain
+  of every parameter, and the **negation** of the claim — so `unsat` means no
+  counterexample exists on that domain, and `sat` *is* a counterexample.
+- **Lean and Coq are named in stage F and are deliberately not generated.**
+  Producing a proof script that both typechecks and states the intended thing is a
+  different problem from translating an expression. Attempting it would emit
+  artifacts that mostly fail to compile and occasionally compile while meaning
+  something else — the second kind being far worse than no feature at all.
+
+### The failure mode, and the guard
+
+An exporter that emits a trivially unsatisfiable obligation — contradictory domain
+constraints, a mistranslated connective collapsing to `false` — is reported `unsat`
+by any solver, for every claim, forever. It would look exactly like a verifier that
+proves everything, and each individual run would look like a success.
+
+So every export is checked **twice**: as written, and with the conclusion flipped.
+
+| obligation | twin | verdict | meaning |
+| --- | --- | --- | --- |
+| `unsat` | `sat` | `verified` | no counterexample, and the domain is non-empty |
+| `sat` | `unsat` | `refuted` | the claim fails everywhere on the domain |
+| `sat` | `sat` | `refuted` | the claim holds at some points and fails at others |
+| `unsat` | `unsat` | **`unknown`** | the domain is empty; every obligation over it is vacuously unsat |
+
+The last row is the guard, and no certificate is issued for it. The third row is
+worth stating too, because the first version of this guard got it wrong: it
+refused whenever the pair *agreed*, which turned a perfectly good refutation into
+`unknown`. Running a claim that is true somewhere and false elsewhere is what
+exposed that — a false claim, run on purpose, rather than a review of the code.
+
+### Faithfulness over coverage
+
+The translator refuses whatever it cannot render exactly, with a reason: a function
+call, a non-literal or non-integer exponent, a numeric expression used as a truth
+value, an operator with no exact SMT rendering. A finite value list becomes a
+disjunction rather than a range, because widening it would make the obligation
+cover points the claim never spoke about — and a proof of the wider statement is
+not a proof of this one. An obligation that is *nearly* the claim is an obligation
+about a different claim, and a solver's verdict on it is worth nothing.
+
+- **Added:** 2026-08-21, v1.8.0.
+- **Validated against:** the real solver, in all four rows of the table above.
+  Three are reachable from well-formed projects (`examples/obligation_export/`).
+  The fourth is not — `load_project` refuses an inverted range, so an empty domain
+  can only arise from a defect in the exporter itself. It is therefore reached by
+  **planting that defect**: `scripts/drill_v18.py` injects contradictory domain
+  constraints into FELRA's own output, and requires the run to come back `unknown`
+  with no certificate. The same drill plants 12 defects in total and requires
+  each to be caught **by the check named for it**, not merely by something. As of
+  2026-08-21 it reports 12/12.
+
+---
+
 ## Not registered
 
 Deliberately absent, and each for a reason rather than by oversight:
@@ -185,4 +248,5 @@ Deliberately absent, and each for a reason rather than by oversight:
 | date | version | change |
 | --- | --- | --- |
 | 2026-08-18 | 1.1.0 | Register created. `lean`, `tlc`, `z3` added. `formal_check` analysis type introduced with the four-valued status and the evidence/formal separation. TLC path-and-exit-code bug found during validation and fixed. |
-| 2026-08-18 | 1.3.0 | `axioms_within` added to the `lean` backend, so a formal claim can be about a whole development rather than one file; validated against collatz-lean's 184 theorems. Z3 5.1.0 installed under `D:\Ai\work together	ools\`; the `z3` entry moves from *adapter present, never exercised* to **both verdict directions run against the real solver**. Adapters now accept a declared `path:`, so a locally installed checker need not be on `PATH`. Tool provenance recorded in `tools/README.md`, including the fact that Z3 publishes no checksum for this release, so its hashes are *recorded* rather than *verified* — unlike `tla2tools.jar`, whose SHA-1 matches a value written down independently in Neo.K's own v0.9 package. |
+| 2026-08-21 | 1.8.0 | The **generating** direction added: FELRA renders an obligation from a claim (SMT-LIB2 only) and checks it against its discriminating twin. No new backend, no new program, no new dependency. Two reproducibility defects found in code shipped since v1.1.0 and fixed: `duration_seconds` was inside `result_sha256`, so every formal analysis had an unstable fingerprint and `felra replay` reported MISMATCH on untouched projects; and replay never captured the declared obligation, so every replayed `formal_check` degraded to "obligation not found" without the checker ever seeing the file. Obligations are now captured into the run beside datasets. `scripts/drill_v18.py` added. |
+| 2026-08-18 | 1.3.0 | `axioms_within` added to the `lean` backend, so a formal claim can be about a whole development rather than one file; validated against collatz-lean's 184 theorems. Z3 5.1.0 installed under `D:\Ai\work together\tools\`; the `z3` entry moves from *adapter present, never exercised* to **both verdict directions run against the real solver**. Adapters now accept a declared `path:`, so a locally installed checker need not be on `PATH`. Tool provenance recorded in `tools/README.md`, including the fact that Z3 publishes no checksum for this release, so its hashes are *recorded* rather than *verified* — unlike `tla2tools.jar`, whose SHA-1 matches a value written down independently in Neo.K's own v0.9 package. |

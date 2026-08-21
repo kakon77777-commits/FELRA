@@ -38,7 +38,8 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from decimal import Decimal, getcontext, localcontext
+import ast as _ast
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from typing import Any
 
@@ -252,7 +253,6 @@ def agreement_class(a: Fraction, b: Fraction, tolerance: Fraction) -> str:
 # --------------------------------------------------------------------------
 # arithmetic evaluation, one implementation per ontology
 
-import ast as _ast
 
 _ALLOWED_NODES = (
     _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.Constant, _ast.Name,
