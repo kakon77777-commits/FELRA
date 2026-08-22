@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.8.1 — 2026-08-22
+
+Housekeeping after v1.1.0–v1.8.0 merged to `main` (PR #2).
+
+### Added
+
+- **`examples/ocme_pythagorean/`** — FELRA driven at somebody else's mathematics
+  rather than at an example FELRA wrote for itself, which is worth more and is
+  rare here. The project is **Neo.K's**, created 2026-07-31 on the
+  `integration/ocme-pythagorean-evidence-v1` branch to run the then-pinned FELRA
+  v1.0.0 against the OCME finite-domain Pythagorean project. That branch's own PR
+  said it was "not intended to merge" — it was CI scaffolding for pulling
+  artifacts out of a PR run. The scaffolding stays off `main`; the project comes
+  on.
+
+  It is carried over because it records a real limit being hit and then moved.
+  The original claim was written with `floor(sqrt(...))`; v1.0.0 could not take a
+  function call, so it was rewritten as a three-variable implication. v1.8.0 does
+  not quietly accept the function call either — it **refuses it by name**
+  (`Call cannot appear in an arithmetic term`), because an obligation that is
+  nearly the claim is an obligation about a different claim.
+
+  What did change is how far the rewritten form reaches. v1.0.0 could only
+  **sample** the 50³ grid (`max_evaluations: 500000`, `random_samples: 20000`).
+  The same claim now exports to SMT-LIB2 and z3 **settles** it over the whole
+  declared domain — measured `unsat` out to `[1, 10^12]³`, a box about 10³⁰ times
+  larger, with the twin `sat` throughout so the result is not vacuous. Both the
+  sampled analyses and the obligation are kept, because the contrast is the
+  content: sampling says *no counterexample was found*, the obligation says *none
+  exists*.
+
+- A second claim in that project asserting the domain **contains** Pythagorean
+  triples at all, exported with `expect: refuted`. Without it, the implication
+  above could be true because its antecedent never fires, and "no counterexample"
+  would not be a statement about triples.
+
+### Fixed
+
+- `README.md` still said 目前版本 **v1.0.0**, and still listed SMT/Lean as
+  explicitly out of scope. The first is now v1.8.0 with the stage table; the
+  second is corrected in place rather than deleted, so the change is visible
+  rather than silently rewritten.
+
 ## 1.8.0 — 2026-08-21
 
 FELRA v1.8.0 — proof-obligation export. This closes the one item the v1.7.0 notes

@@ -1,0 +1,88 @@
+project:
+  id: ocme-pythagorean-finite-check
+  title: 畢達哥拉斯整數三元組的有限域機器檢驗
+  language: zh-TW
+
+# 這是 FELRA 少數幾個「對著別人的數學跑」的例子之一，不是 FELRA 為自己寫的示範，
+# 所以他值得留在樹裡。原始版本由 Neo.K 於 2026-07-31 在
+# `integration/ocme-pythagorean-evidence-v1` 分支上建立，用來把當時 pinned 的
+# FELRA v1.0.0 跑在 OCME 的有限域畢氏三元組專案上。那個分支的 PR (#1) 自己就寫明
+# 「not intended to merge」——他是鷹架。鷹架不進 main，例子進。
+#
+# **原始寫法被 FELRA 擋下來過，而那件事現在有了名字。** 最初的斷言寫成
+#
+#     a**2 + b**2 != floor(sqrt(a**2 + b**2))**2 or (floor(sqrt(...)) >= a and ...)
+#
+# v1.0.0 吃不下函數呼叫，於是改寫成下面這個三變數蘊含式。v1.8.0 不是默默接受了
+# 函數呼叫——他是**明講拒絕**：`Call cannot appear in an arithmetic term`。一個
+# 近似於原斷言的義務，是關於另一個斷言的義務，而求解器對他的判定一文不值。
+#
+# 真正改變的是三變數版本能走多遠。v1.0.0 只能在 50³ 的網格上**抽樣**
+# （max_evaluations 500000、random_samples 20000）。v1.8.0 把同一個斷言渲染成
+# SMT-LIB2 交給 z3，於是他在整個宣告域上被**定案**而不是被抽樣——實測在
+# [1, 10^12]³ 上仍是 unsat（無反例），比原本的箱子大約 10^30 倍。
+#
+# 兩種分析都留著，因為對照才是內容：抽樣說「找不到反例」，義務說「不存在反例」。
+#
+# obligation_export 需要 Z3_EXE；沒有他時該分析回報 `unavailable`，絕不回報通過。
+
+execution:
+  max_evaluations: 500000
+  random_samples: 20000
+  seed: 42
+
+parameters:
+  a:
+    type: int
+    range: [1, 50]
+    samples: 50
+  b:
+    type: int
+    range: [1, 50]
+    samples: 50
+  c:
+    type: int
+    range: [1, 50]
+    samples: 50
+
+claims:
+  - id: generated_hypotenuse_dominance
+    statement: 在宣告整數域中，任何滿足 a²+b²=c² 的三元組，其 c 不小於 a 與 b
+    expression: a ** 2 + b ** 2 != c ** 2 or (c >= a and c >= b)
+    status: hypothesis
+    required_checks:
+      - numerical
+      - boundaries
+      - counterexample_search
+
+  - id: hypotenuse_dominance_is_not_vacuous
+    statement: >
+      宣告域裡確實存在畢氏三元組。若沒有，上面那個蘊含式會因為前件永假而恆真，
+      而「找不到反例」就完全不是關於畢氏三元組的陳述。
+    expression: a ** 2 + b ** 2 == c ** 2 and c >= 1
+    status: hypothesis
+    required_checks:
+      - numerical
+
+analyses:
+  - id: prove_hypotenuse_dominance
+    type: obligation_export
+    title: 把斷言交給 z3，在整個宣告域上定案而非抽樣
+    claim_id: generated_hypotenuse_dominance
+    backend: z3
+    path: ${Z3_EXE}
+    expect: verified
+
+  # 這一個「失敗」是設計好的，而且是上面那個結果能不能讀的前提。
+  # obligation_export 問的是「這個斷言在整個域上都成立嗎」，而
+  # `a²+b²=c²` 顯然不是對每個 (a,b,c) 都成立——所以正確結果是 refuted，
+  # 且 z3 交回的反例證明求解器真的在解，不是在對空集合點頭。
+  # 更重要的是：他的 twin（結論反轉）若也是 unsat，就代表宣告域是空的，
+  # 上面那個 verified 會是空洞的。這一格是那個保證。
+  - id: the_domain_actually_contains_triples
+    type: obligation_export
+    title: 定義域非空的證據——沒有他，上面的 verified 可能是空洞的
+    claim_id: hypotenuse_dominance_is_not_vacuous
+    backend: z3
+    path: ${Z3_EXE}
+    expect: refuted

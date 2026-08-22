@@ -19,9 +19,20 @@ $$
 \text{SMT／Lean／RWL}.
 $$
 
-目前版本：**v1.0.0 — Cross-Method Consistency (V8) · 全域驗證編排（階段 2）完成**
+目前版本：**v1.8.0 — 數值增補案六個階段 A–F 全部實作完成**
 
-依白皮書 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` 第 15 章的定義，v1.0.0 代表第 9.4 節 V0–V8 驗證通道與 Figure Factory 全部完成；第 3 階段以後（FELRA 條款提升、SMT／Lean、RWL 投影、八算子）明確不在 1.0.0 範圍內。完整通道對照表見 `CHANGELOG.md` 1.0.0 條目。
+v1.0.0 代表白皮書 `docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` 第 15 章、第 9.4 節的 V0–V8 驗證通道與 Figure Factory 全部完成。當時這裡寫著「第 3 階段以後（FELRA 條款提升、SMT／Lean、RWL 投影、八算子）明確不在 1.0.0 範圍內」——**那句話的前半段已經不成立了，留在這裡是為了讓變動看得見**：外部形式化後端（`lean`／`tlc`／`z3`）在 v1.1.0 進來，數值增補案的六個階段在 v1.8.0 收完。
+
+| 階段 | | 版本 |
+| --- | --- | --- |
+| A | 治理先行 | 1.2.0 |
+| B | 外部多精度資料接入 | 1.7.0 |
+| C | 原生 Decimal／Rational | 1.3.0 |
+| D | 原生任意精度 | 1.4.0（ladder）、1.6.0（`binary_mp`） |
+| E | 嚴格包絡 | 1.5.0 |
+| F | 符號與形式化橋接 | 1.1.0、1.3.1、1.5.0、1.8.0（證明義務匯出） |
+
+仍然明確**不在**範圍內：FELRA 條款提升、RWL 投影、八算子，以及 Lean／Coq 證明腳本的**產生**（檢查別人寫好的可以，產生不行——理由記在 `docs/FORMAL_BACKENDS.md`）。完整通道對照表見 `CHANGELOG.md`。
 
 ## 核心能力
 
