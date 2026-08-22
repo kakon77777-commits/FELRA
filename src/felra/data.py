@@ -86,10 +86,40 @@ def _convert(value: str, kind: str) -> Any:
         return _parse_bool(value)
     if kind == "str":
         return value
+    if kind == "exact":
+        from felra.numeric_backends import NumericBackendError, exact_parse
+
+        try:
+            return exact_parse(str(value).strip())
+        except NumericBackendError as exc:
+            raise ValueError(str(exc)) from exc
+    if kind == "interval":
+        from felra.certificates import Interval
+        from felra.numeric_backends import NumericBackendError, exact_parse
+
+        text = str(value).strip()
+        for sep in ("|", "..", ";"):
+            if sep in text:
+                lo_text, hi_text = text.split(sep, 1)
+                break
+        else:
+            lo_text = hi_text = text          # a degenerate interval is still one
+        try:
+            return Interval(exact_parse(lo_text.strip()).value,
+                            exact_parse(hi_text.strip()).value)
+        except (NumericBackendError, ValueError) as exc:
+            raise ValueError(
+                "cannot read %r as an interval; write it as `lo|hi`: %s" % (text, exc)
+            ) from exc
     raise ValueError(f"unsupported column type {kind!r}")
 
 
 def _missing_value(kind: str) -> Any:
+    if kind in {"exact", "interval"}:
+        # There is no exact NaN. A missing exact value is absent, and absence must
+        # not be filled with a float sentinel that later arithmetic would treat as
+        # a number.
+        return None
     if kind in {"float", "int"}:
         return np.nan
     if kind == "bool":

@@ -1,0 +1,103 @@
+project:
+  id: formal-check-demo
+  title: External formal checkers, recorded beside the evidence
+  language: en
+
+# This example is ENVIRONMENT-DEPENDENT on purpose, and is not part of the
+# mandatory gate set in AGENTS.md §8.
+#
+#   * `tlc_counter_bounded` runs only if TLA2TOOLS_JAR points at a real
+#     tla2tools.jar. FELRA does not ship or download one.
+#   * `z3_exact_sum` and `z3_counter_model` run only if Z3_EXE points at a z3
+#     binary. They exercise BOTH directions of the solver's verdict, because an
+#     adapter that has only ever seen `unsat` has not been tested.
+#   * `absent_checker_is_recorded_not_skipped` points at a jar that does not
+#     exist, on any machine, so it demonstrates the rule that matters most:
+#     a checker that did not run is recorded as `unavailable` and never as a
+#     pass.
+#
+# Run with:  TLA2TOOLS_JAR=/path/to/tla2tools.jar \
+#              felra run examples/formal_check/project.yaml --output artifacts/formal
+
+parameters:
+  n:
+    type: int
+    range: [0, 8]
+    samples: 9
+
+claims:
+  - id: counter_stays_bounded
+    statement: The counter never exceeds its declared limit
+    expression: n <= 8
+    status: hypothesis
+    required_checks:
+      - numerical
+
+analyses:
+  # The Python evidence channel and the formal channel answer different
+  # questions about the same claim, and their results are recorded separately.
+  - id: counter_sweep
+    type: parameter_sweep
+    title: Sampled evidence that the counter stays within its limit
+    claim_id: counter_stays_bounded
+    objective: n
+    parameters: [n]
+
+  - id: tlc_counter_bounded
+    type: formal_check
+    title: TLC checks Bounded over the whole reachable state space
+    claim_id: counter_stays_bounded
+    backend: tlc
+    obligation: Counter.tla
+    config_file: Counter.cfg
+    jar: ${TLA2TOOLS_JAR}
+    expect: verified
+    derives_from:
+      - claim:counter_stays_bounded
+      - analysis:counter_sweep
+    assumptions:
+      - the TLA+ module states the same bound the claim states
+      - Limit is fixed at 8, so this is a bounded model rather than a schema
+    limitations:
+      - a model-checked invariant holds of the model, not of any implementation
+
+  - id: absent_checker_is_recorded_not_skipped
+    type: formal_check
+    title: A checker that is not installed is recorded, never passed over
+    claim_id: counter_stays_bounded
+    backend: tlc
+    obligation: Counter.tla
+    jar: ./no-such-tla2tools.jar
+    expect: unavailable
+    derives_from:
+      - claim:counter_stays_bounded
+    limitations:
+      - this analysis exists to show that `unavailable` is a first-class outcome
+
+  - id: z3_exact_sum
+    type: formal_check
+    title: z3 proves in the reals what cross_backend measures in the rationals
+    claim_id: counter_stays_bounded
+    backend: z3
+    obligation: exact_sum.smt2
+    path: ${Z3_EXE}
+    expect: verified
+    derives_from:
+      - analysis:classic_float_residue
+    assumptions:
+      - the SMT encoding states the same identity the rational evaluation does
+    limitations:
+      - real arithmetic in z3 is not float64 arithmetic; this says nothing about
+        what a float64 implementation computes
+
+  - id: z3_counter_model
+    type: formal_check
+    title: The refuted direction, exercised by the same solver
+    claim_id: counter_stays_bounded
+    backend: z3
+    obligation: counter_model.smt2
+    path: ${Z3_EXE}
+    expect: refuted
+    limitations:
+      - this obligation is satisfiable on purpose; `refuted` here is the correct
+        outcome and not a defect

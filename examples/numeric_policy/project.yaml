@@ -1,0 +1,46 @@
+project:
+  id: numeric-policy-demo
+  title: Declaring a numeric policy, and being told what is not yet honoured
+  language: en
+
+# Addendum stage A (治理先行) is a GOVERNANCE layer: it records and validates,
+# and it changes nothing about how anything is computed. This project declares a
+# policy that this version does not implement, on purpose — the manifest's
+# `numeric.declared_but_not_implemented` is the point of the example.
+#
+# Compatibility, all testable:
+#   17.1  a project WITHOUT numeric_policy behaves exactly as before
+#   17.2  a backend switch requires this declaration
+#   17.3  such a project's result_sha256 is unchanged by this layer
+#   17.4  declaring or changing a policy separates plan and result fingerprints
+
+numeric_policy:
+  default_backend: decimal
+  source_parsing: exact_string
+  working_precision_bits: 128
+  rounding_mode: nearest_even
+  certification:
+    mode: stability
+
+parameters:
+  x:
+    type: float
+    range: [0.1, 2.0]
+    samples: 20
+
+claims:
+  - id: reciprocal_is_positive
+    statement: The reciprocal of a positive number is positive
+    expression: 1 / x > 0
+    status: hypothesis
+    required_checks:
+      - numerical
+      - counterexample_search
+
+analyses:
+  - id: reciprocal_sweep
+    type: parameter_sweep
+    title: Sampled evidence over the declared domain
+    claim_id: reciprocal_is_positive
+    objective: 1 / x
+    parameters: [x]

@@ -14,3 +14,7 @@ artifacts/
 .felra-registry/
 
 .felra-preregistration/
+
+# TLC writes fingerprint/state scratch files beside the module it checks.
+# They are run artifacts, not source (AGENTS.md §16).
+examples/formal_check/states/

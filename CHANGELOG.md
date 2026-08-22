@@ -1,5 +1,524 @@
 # Changelog
 
+## 1.8.0 — 2026-08-21
+
+FELRA v1.8.0 — proof-obligation export. This closes the one item the v1.7.0 notes
+listed as still missing: stage F asks FELRA to **generate** an obligation for an
+external prover, and every formal channel up to now could only **check** one
+somebody else had written.
+
+### Added
+
+- **`obligation_export` analysis type.** It renders a FELRA claim as SMT-LIB2 —
+  `(set-logic AUFNIRA)`, the declared domain of every parameter, and the
+  **negation** of the claim — so `unsat` means no counterexample exists on that
+  domain and `sat` *is* a counterexample. The file is written whether or not a
+  backend is declared; with no backend the result says plainly that nothing was
+  proved, because an obligation nobody checked is a file.
+- **The discriminating twin.** Every export is checked twice, once as written and
+  once with the conclusion flipped. This is not a nicety. An exporter that emits a
+  trivially unsatisfiable obligation is reported `unsat` by any solver, for every
+  claim, forever — it would look exactly like a verifier that proves everything,
+  and each individual run would look like a success. Both coming back `unsat` means
+  the declared domain is empty, and the verdict is `unknown` with no certificate
+  issued.
+- **`scripts/drill_v18.py`**, FELRA's first drill. It plants defects in the
+  real source, runs the real suite against a real solver, and requires each defect
+  to be caught **by the check named for it** — a defect caught only by some other
+  test is recorded as a miss, because it means the named check is not aimed at what
+  it claims to cover. Reports 12/12.
+- `examples/obligation_export/`, carrying a true claim and a false one, so the
+  `refuted` path is exercised rather than assumed.
+
+### A correction, recorded rather than smoothed over
+
+The first version of the twin guard refused whenever the pair **agreed**. That is
+wrong. For a claim that holds at some points of its domain and fails at others,
+both the obligation and its twin are satisfiable, and that is the correct
+mathematical situation — so the guard turned a perfectly good refutation into
+`unknown`. What actually indicates a broken export is both coming back *unsat*.
+
+The error did not surface from re-reading the code. It surfaced from running a
+claim known to be false (`x >= 1` on `[-2, 3]`) and finding the answer was not the
+one arithmetic says it should be. Both cases are now pinned by tests, and the
+false claim ships in the example project.
+
+### Refusals, on purpose
+
+- **Lean and Coq are not generated**, though stage F names them. Producing a proof
+  script that both typechecks and states the intended thing is a different problem
+  from translating an expression; the attempt would emit artifacts that mostly fail
+  to compile and occasionally compile while meaning something else. The second kind
+  is worse than no feature.
+- **The translator refuses whatever it cannot render exactly**, with a reason —
+  function calls, non-literal or non-integer exponents, a numeric expression used
+  as a truth value. A finite value list becomes a disjunction, never a range: an
+  obligation that is *nearly* the claim is an obligation about a different claim.
+
+### Fixed — two reproducibility defects that had shipped since v1.1.0
+
+Neither was introduced by this release. Both were found while checking whether the
+*new* analysis type was reproducible, which is the only reason anyone ran an
+existing project twice and compared.
+
+- **A stopwatch reading was inside the fingerprint.** `duration_seconds` entered
+  the hashed payload with the formal backends in v1.1.0. From that version until
+  this one, **every formal analysis produced a different `result_sha256` on every
+  run**, because a solver that answers in 24ms on one run and 25ms on the next is
+  a different result as far as the hash was concerned. `felra replay` therefore
+  reported MISMATCH on projects nobody had touched. Wall-clock readings and
+  filesystem paths are now excluded; the content hashes recorded beside them say
+  *which* obligation was checked, and say it better, since a hash survives being
+  moved.
+
+  Measured blast radius: of the nine shipped examples, seven have a fingerprint
+  **byte-identical** to before this change, and the two that moved (`formal_check`,
+  `obligation_export`) had no stable fingerprint to preserve.
+
+- **`felra replay` never handed the obligation to the checker.** Datasets have
+  always been captured into the run directory, with the replay project rewritten to
+  point at those copies. Formal obligations were not captured at all — so replaying
+  an untouched `formal_check` project reported *"the declared obligation does not
+  exist"* for every analysis, and MISMATCH for the project. That reads as **the
+  result did not reproduce**, when what actually happened is that nothing was
+  checked. Obligations (and a TLC `.cfg`, which travels with its `.tla`) are now
+  captured alongside datasets, filenames preserved.
+
+  An obligation declared as `${VAR}` is expanded to *find* the file and then
+  rewritten to the run's own copy, so a replay depends on neither the variable nor
+  the machine. An unset variable leaves the declaration untouched and replay
+  reports it missing, which is the truth about that run.
+
+`obligation_export` replays correctly either way — it generates its obligation from
+the claim, so there is no external file to lose. It is kept beside `formal_check` in
+the test so the check cannot pass for the wrong reason.
+
+### Fixed
+
+- A `\t` eaten by a shell heredoc had turned `D:\Ai\work together\tools\` into
+  `D:\Ai\work together<TAB>ools\` in the `docs/FORMAL_BACKENDS.md` history table.
+- Three pre-existing lint errors (two unused imports, one mid-file import) cleared
+  so the release ships with `ruff check src tests scripts` green.
+
+### The addendum's six stages, now all implemented
+
+| stage | | version |
+| --- | --- | --- |
+| A | 治理先行 | 1.2.0 |
+| B | 外部多精度資料接入 | 1.7.0 |
+| C | 原生 Decimal／Rational | 1.3.0 |
+| D | 原生任意精度 | 1.4.0 (ladder), 1.6.0 (`binary_mp`) |
+| E | 嚴格包絡 | 1.5.0 |
+| F | 符號與形式化橋接 | 1.1.0 (SMT/Lean/TLC), 1.3.1 (`axioms_within`), 1.5.0 (certificate recovery), **1.8.0 (obligation export)** |
+
+Stage F's list is complete except for Lean and Coq *generation*, which is refused
+above with its reason rather than left off the list.
+
+### Register
+
+`docs/FORMAL_BACKENDS.md` gains a section for the generating direction: what
+program is invoked (`z3`, through the adapter already registered — no new program
+and no new dependency), what is new (who writes the file the solver reads), what is
+deliberately not generated, and what the four-row verdict table was validated
+against. No new backend was added.
+
+Tests: 161 (was 135), no skips.
+
+## 1.7.0 — 2026-08-18
+
+FELRA v1.7.0 — stage B, external multi-precision data ingestion. With this the
+addendum's six stages are all implemented.
+
+### A correction first
+
+When v1.2.0 shipped, this project recorded that stage B was already satisfied
+because the dataset layer handles contracts, hashes, propositions, provenance,
+replay and export. That was a judgement, not a check, and it was **wrong**. The
+dataset layer accepted only `float`, `int`, `bool` and `str`, so externally
+produced exact data had to be declared either `float` — discarding the producer's
+precision before FELRA had seen it — or `str`, which keeps the text while losing
+that it is a number. Neither is ingestion.
+
+### Added
+
+- **`exact` columns.** A cell is read with the exact-string parser and kept as an
+  exact rational with its provenance. `1/3` stays `1/3`; the same cell in a `float`
+  column is `6004799503160661/18014398509481984`, and a `float` column cannot read
+  `1/3` at all.
+- **`interval` columns**, written `lo|hi` (also `..` or `;`). A single value is a
+  degenerate interval rather than an error, and an inverted one is refused.
+- **A missing exact value is absent, not `NaN`.** There is no exact NaN, and
+  filling one with a float sentinel would put a number where the producer recorded
+  nothing — which later arithmetic would treat as one.
+- `examples/exact_dataset/`, where the same CSV carries a value in an `exact`
+  column and in a `float` column so the difference is visible rather than
+  described.
+
+### Stage coverage against section 16
+
+| stage | | version |
+| --- | --- | --- |
+| A | 治理先行 | 1.2.0 |
+| B | 外部多精度資料接入 | **1.7.0** |
+| C | 原生 Decimal／Rational | 1.3.0 |
+| D | 原生任意精度 | 1.4.0 (ladder), 1.6.0 (`binary_mp`) |
+| E | 嚴格包絡 | 1.5.0 |
+| F | 符號與形式化橋接 | 1.1.0 (SMT/Lean/TLC), 1.3.1 (`axioms_within`), 1.5.0 (certificate recovery) |
+
+Acceptance 18.1–18.5 are all met. What section 16's stage F still names and this
+package does not have is **proof-obligation export** — generating an obligation
+for an external prover from a FELRA claim, rather than checking one a human wrote.
+
+## 1.6.0 — 2026-08-18
+
+FELRA v1.6.0 — the `binary_mp` backend, completing stage D's registry, and the
+decimal-information-residue pack of section 12, satisfying acceptance 18.5.
+
+### Added
+
+- **`binary_mp` backend** (mpmath). `IMPLEMENTED_BACKENDS` now covers every
+  ontology stage C and D name. An `mpf` is converted through its mantissa and
+  binary exponent, which is its **exact** value — routing it through `float()`
+  would round to double first and every residual downstream would then measure
+  that rounding rather than the backend.
+- **`decimal_residual` analysis type** and `templates/decimal_residual_series/`,
+  covering section 12's eight checks: the reconstruction identity, the residue
+  range, the shift law, five bases, `n_fail`, source-parsing comparison,
+  cross-representation residues, and a strict envelope.
+- Identities are asserted **exactly**, not to a tolerance. A reconstruction
+  identity that holds only to 1e-30 is not the identity; it is evidence that
+  something upstream rounded.
+
+### 12.5 had to be made into a measurement
+
+`n_fail(ρ, p)` is the first level at which a backend departs from the exact
+reference. The first version compared **residues** for equality — and an inexact
+backend's residue differs at level 1 for any value it cannot represent, so it
+reported `n_fail = 1` for every backend at every precision. A number that does not
+move with the thing it measures is not a measurement.
+
+Comparing **truncations** asks how many correct digits the representation actually
+delivers, which is what the addendum means. It now varies as it should:
+
+| | 16 digits | 40 digits |
+| --- | --- | --- |
+| `float64` | 17 | 17 |
+| `decimal` | 16 | 40 |
+| `binary_mp` | 20 | 43 |
+
+`float64`'s horizon does not move with the declared precision, because it has no
+precision knob — and that is itself the informative part of the row.
+
+### A degenerate case, reported as degenerate
+
+`1/8` is exactly representable in binary, so no backend ever departs and `n_fail`
+is null everywhere. The pack reports 6/7 boolean checks with a warning saying
+`n_fail` is not a measurement for that value, rather than a clean 7/7 that would
+mean nothing. The identities still hold, so the analysis still passes.
+
+### Two tests re-aimed, both for the right reason
+
+`binary_mp` had been the example of a declared-but-unimplemented backend in a
+v1.2.0 test, and stage C's test asserted `IMPLEMENTED_BACKENDS` by equality. Both
+now pin the **invariant** — whatever the registry still lists as absent, and a
+subset rather than an equality — so a later stage implementing another backend
+does not fail them for no reason.
+
+## 1.5.0 — 2026-08-18
+
+FELRA v1.5.0 — strict envelopes and numeric certificates, stage E of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16, satisfying acceptance
+section 18.4. Stage F's 證書回收與驗證 lands here too, because §10.5's fifth
+certificate kind is an external formal verdict — which v1.1.0 already produces.
+
+### Added
+
+- **`numeric_certificate` analysis type.** Interval arithmetic over a declared box
+  with exact rational endpoints. Where every sampling channel in FELRA says "no
+  counterexample was found among the points tried", this says "the range over the
+  **whole box** is contained in `[L, U]`" — a statement about uncountably many
+  points, established by arithmetic rather than by trying them. That is why it can
+  raise the evidence ladder's `numerically_certified` rung when no amount of
+  sampling could.
+- **Five certificate kinds**, §10.1–10.5: `interval`, `ball`, `exact_identity`,
+  `inequality`, `external_formal`.
+- **Independent re-verification** (18.4 證書可獨立重驗). `verify_certificate` reads
+  only what the certificate records and never calls back into the analysis engine.
+  A certificate confirmable only by repeating the computation is a log line.
+- **Certificates and their hashes enter the manifest**, and each is **re-checked at
+  manifest time** rather than having the issuing analysis's verdict copied over. A
+  certificate confirmed only by the thing that issued it has been confirmed by
+  nobody. A run carrying an unverifiable certificate is not a complete pass
+  (18.4 證書失效時重播不得標記為完整通過).
+- **Outward rounding where it matters.** Endpoints are exact `Fraction`s, so the
+  arithmetic needs no rounding at all; `to_decimal` rounds the lower endpoint down
+  and the upper up, so a certificate can never be narrowed by the act of displaying
+  it.
+
+### Refusals, which are most of the value
+
+- An enclosure that does not establish the requested relation yields **no
+  certificate**. `x² − 2x + 3` is `(x−1)² + 2 > 0` everywhere, but in its
+  unfactored form over `[0, 3]` interval arithmetic gives `[−3, 12]` — the
+  dependency problem, a variable occurring more than once. The certificate is
+  refused, and **a refusal is not a refutation of the bound**. Both forms ship as
+  `examples/numeric_certificate` precisely so the difference is visible.
+- Division by an interval containing zero is refused rather than returned as
+  something that is not an enclosure.
+- An identity that does not hold, and a formal outcome that is not `verified`,
+  are both refused at issue.
+- An `external_formal` certificate records the checker's identity and the
+  obligation's hash, and its re-verification says plainly that **re-running the
+  prover is the original check again, not an independent re-verification of it**.
+
+### Fixed
+
+- `Interval.to_decimal` raised `InvalidOperation` on any enclosure with an integer
+  part: the Decimal context counts significant digits while the parameter is
+  decimal places, so quantising `[2, 6]` needed headroom the context did not have.
+  Found the first time this met an enclosure that was not a fraction below one.
+
+## 1.4.0 — 2026-08-18
+
+FELRA v1.4.0 — the precision ladder, stage D of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16, and the first version in
+which the evidence ladder's middle rungs are driven by analyses rather than left
+unrun.
+
+### Added
+
+- **`precision_ladder` analysis type.** One expression evaluated in Decimal at a
+  rising precision — `p_k = p_0·2^k` or `p_0 + k·Δp` — recording per level the
+  fields section 7 asks for: precision in both bits and digits, the result and its
+  hash, runtime, the difference from the previous level, and an accuracy estimate.
+- **Three outcomes, per section 18.2**: `stable`, `unstable`, `exhausted`.
+  `unstable` means the tail differences stopped shrinking, so the ladder saw
+  evidence against convergence; `exhausted` means it hit the declared ceiling with
+  the differences still shrinking, which is a resource fact rather than a
+  mathematical one. Neither is a pass — 不把未穩定結果標記為通過.
+- **The evidence ladder's `precision_stable`, `cross_backend_consistent` and
+  `exact_verified` rungs are now driven by real analyses.** A rung is `pass` only
+  when something ran and settled it; absence stays `not_run`, so the ladder cannot
+  climb on the lack of a check.
+
+### The stability test compares every pair, not consecutive ones
+
+Section 7.1 is explicit — 不應只比較一次 p 與 2p — and the reason is visible on a
+real quantity rather than a constructed one. `1 - (2/3)^150` is about `1 - 1.4e-27`.
+At 32 and 64 bits, which is 10 and 20 decimal digits, Decimal rounds it to
+**exactly 1 at both**. A two-level test therefore agrees perfectly and reports
+`stable` at the bottom rung **with the wrong answer**. Three levels reach 128 bits,
+where the value moves, and the false settle does not happen. There is a test that
+pins exactly this.
+
+### Where the accuracy estimate comes from
+
+`estimated_accuracy` is the ladder's own successive difference, never a comparison
+against a known answer — a check that only works where the answer is already known
+is not a check. Where an exact value *is* available it is reported separately, as a
+way of asking whether the estimate tracks the truth.
+
+### Fixed while building it
+
+- The first version of the ladder returned only `stable` and `exhausted`, so
+  `unstable` was **unreachable** — a status in the vocabulary that no run could
+  produce. All three are now reachable and each has a test.
+- The config error for a float tolerance now explains the YAML subtlety behind it:
+  `1e-80` is read as a string but `1.0e-80` as a float, so the same tolerance is
+  safe written one way and lossy the other.
+
+## 1.3.1 — 2026-08-18
+
+### Added
+
+- **`axioms_within:` on the `lean` backend.** A formal claim can now be about a
+  whole development rather than one file: Lean's `#print axioms` output is parsed
+  and every reported theorem must rest only on the declared axioms. Validated
+  against `collatz-lean` — **184 theorems, all within `propext`,
+  `Classical.choice`, `Quot.sound`** — a count that independently agrees with that
+  development's own audit gate, reached by a different route.
+- The number of theorems audited and the axioms actually seen are recorded, so a
+  shrinking audit is visible rather than silent.
+
+### Guards
+
+- **An axiom claim about nothing is `unknown`, never `verified`.** A file printing
+  no axiom lines audits no theorem.
+- Both `#print axioms` output forms are read; a theorem depending on nothing uses
+  the second, and reading only the first drops the cleanest theorems from the audit.
+- `axioms_within` is refused on any backend that cannot honour it.
+
+### Fixed
+
+- Three defects found by driving v1.3.0 at the Collatz arm's anchor cocycle:
+  `decimal_prec` governed only the input conversion rather than the arithmetic; a
+  declared `tolerance` below `1e-30` was silently collapsed to zero; and
+  `falsified` was driven by "an analysis did not meet its expectation" rather than
+  by an actual counterexample. Each has a test that fails on the previous code.
+
+## 1.3.0 — 2026-08-18
+
+FELRA v1.3.0 — stage C (原生 Decimal／Rational) of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16. Stage A let a project
+*declare* `default_backend: decimal`; this makes the declaration mean something.
+
+### Added
+
+- **Exact string parser.** `"0.1"` is read as exactly `1/10`. A bare `0.1` in
+  YAML is already a float64 before any backend sees it, so `cross_backend` points
+  must be **quoted** and the loader refuses an unquoted float with that reason.
+  Addendum section 2.2: 高精度型別不能修復早期損失.
+- **Decimal and Rational backends**, with `IMPLEMENTED_BACKENDS` grown in exactly
+  one place so `declared_but_not_implemented` cannot drift from what is真的 done.
+- **Conversion residual** (section 9) — `R = Decode(C(x)) − x`, computed in exact
+  rational arithmetic, so a float64 residual is the **true** error rather than a
+  rounded estimate of the error. Each conversion records from, to, rounding,
+  exactness, source and result hashes, and the residual bounds.
+- **`source_was_float64` is sticky** (section 9). A value that has been through
+  float64 carries the mark through every later promotion, so a high-precision
+  *copy* of a low-precision value can never be reported as a high-accuracy
+  result. `cross_backend` warns when any input arrived this way, because an
+  `exact` agreement about an already-rounded number is agreement about the wrong
+  number.
+- **`cross_backend` analysis type** (acceptance section 18.3) — one formulation
+  evaluated in float64, Decimal and Rational over declared points, with a
+  **difference matrix** and the required **three-valued** classification:
+  `exact` / `within_tolerance` / `inconsistent`. Two values would be the easy
+  design and the wrong one: "agrees to 1e-12" and "is the same number" are
+  different facts, and only the second can support the evidence ladder's
+  `exact_verified` rung.
+- `examples/cross_backend/` and `tests/test_v13.py` (10 tests).
+
+### How this differs from `cross_method` (v1.0.0)
+
+`cross_method` asks whether different **formulations** of a quantity agree —
+`(x²−1)/(x−1)` against `x+1`. `cross_backend` asks whether different **numeric
+ontologies** evaluating the same formulation agree. The first finds algebra
+errors, the second representation errors, and they fail on different inputs.
+`(0.1 + 0.2) − 0.3` has one formulation and three answers.
+
+### Refusals
+
+Arithmetic only: `+ - * /` and integer powers. A transcendental function has no
+exact rational value, so an ontology claiming exactness **refuses** it rather than
+falling back to float — that fallback is how a `cross_backend_consistent` result
+would come to mean three float64 runs agreeing with each other.
+
+### Note on the shipped example
+
+`examples/cross_backend` ends in ATTENTION REQUIRED on purpose: at zero tolerance
+float64 disagrees with the exact backends on two of its three points, and that
+disagreement is the demonstration. Like `examples/formal_check`, it is not part of
+the mandatory gate set in `AGENTS.md` section 8.
+
+## 1.2.0 — 2026-08-18
+
+FELRA v1.2.0 — stage A (治理先行) of
+`FELRA_v1.0_未來數值表示與驗證升級附加計畫` section 16. A numeric **governance**
+layer: it records and validates, and by design it changes nothing about how
+anything is computed. The native backends are stage C.
+
+### Added
+
+- **`numeric_policy:` project block** — the addendum's section 6 schema:
+  `default_backend`, `source_parsing`, `working_precision_bits`,
+  `target_accuracy_bits`, `rounding_mode`, `escalation`, `cross_backend`,
+  `certification.mode`. Every vocabulary is the addendum's, quoted rather than
+  invented, and an unrecognised term is **refused** rather than passed through.
+- **`declared_but_not_implemented`** — a policy may name a backend this version
+  does not have; the addendum permits that explicitly. What it must not do is let
+  a manifest imply the computation used it. So the manifest lists, item by item,
+  what was declared and not honoured, and records the backend that actually ran.
+- **Numeric environment record** (section 18.1) — computation backend, float
+  mantissa digits and rounding, interpreter and platform, plus the versions of the
+  libraries that will host the later backends, so a stage-C run can be compared
+  against a stage-A one rather than merely succeeding it.
+- **Evidence-level ladder** (section 11) — `executed`, `reproduced`,
+  `precision_stable`, `cross_backend_consistent`, `exact_verified`,
+  `numerically_certified`, `formally_proved`, plus `undetermined` and `falsified`.
+  The ladder is **cumulative**: `highest_level` is the tallest rung with no gap
+  below it, so a formal proof recorded above an unrun precision check does not
+  raise the level. Unreached rungs are `not_run`, never `not_applicable`.
+- v1.1.0's `formal_check` verdicts drive the `formally_proved` rung, so the two
+  features meet in the ladder instead of each inventing a status. A `verified`
+  mixed with an `unavailable` is `partial`, not a proof.
+- `examples/numeric_policy/` and `tests/test_v12.py` (14 tests).
+
+### Compatibility (addendum section 17), all tested
+
+- **17.1 / 17.3** — a project with no `numeric_policy` is unaffected: no manifest
+  section is added and its `result_sha256` is byte-identical to before. Verified
+  against `examples/reproducibility`, which still reproduces
+  `ec641760a43ff42fcc30d311b5587ec09e4817f6af425cb077a9e3c70f12608b` — the same
+  digest recorded at the v0.7 sync, now unchanged across v0.8 through v1.2 and a
+  Python version change.
+- **17.2** — nothing switches without the declaration.
+- **17.4** — declaring a policy separates the plan and result fingerprints, and
+  changing one separates them again.
+
+  The natural implementation satisfies one of 17.3 and 17.4 and breaks the other:
+  give every project a default policy object and the fingerprints separate
+  correctly while every legacy `result_sha256` moves. An undeclared policy is
+  therefore **absent**, not defaulted, and contributes nothing to the payload.
+
+## 1.1.0 — 2026-08-18
+
+FELRA v1.1.0 — the first slice of the whitepaper's implementation roadmap stage 4
+(`docs/GCPR-RWL-FELRA_Technical_Whitepaper_zh-TW_v1.0.md` section 15,
+"正式驗證後端"): external formal checkers, invoked but never depended on, with
+their verdicts recorded beside the Python evidence rather than merged into it.
+
+### Added
+
+- **`formal_check` analysis type.** Invokes an external formal checker on a
+  declared obligation and reports its verdict separately from FELRA's own
+  pipeline flag. This implements the stage-4 requirement
+  「將 Python 證據狀態與正式證明狀態分開標記」.
+- **`felra.formal`** — a *closed* set of adapters (`lean`, `tlc`, `z3`). A project
+  declares which adapter and what obligation; it never supplies a command to run.
+  An unknown backend is refused rather than guessed at.
+- **Four-valued formal status** — `verified`, `refuted`, `unknown`,
+  `unavailable`. `unknown` (the checker ran and did not decide) and `unavailable`
+  (the checker did not run) are distinct on purpose: collapsing them is how a
+  missing tool becomes an implicit pass. A project declaring `expect: verified`
+  **fails** on a machine where the checker is absent.
+- **Verification certificates.** Every run records which program ran (backend,
+  command, resolved path, version string, and the SHA-256 of the executable or
+  archive that decided), what was checked (obligation path, SHA-256, size), what
+  the verdict rests on (`assumptions`, `limitations`), and where the obligation
+  came from (`derives_from`).
+- **`docs/FORMAL_BACKENDS.md`** — a permanent register of every backend: what
+  program it invokes, when it was added, and what real artifact it was validated
+  against. Adding a backend without a register entry is a defect.
+- **`examples/formal_check/`** — a self-contained TLA+ model plus a project
+  demonstrating both a real check and the `unavailable` path. Environment-dependent
+  by nature, so deliberately **not** part of the mandatory gate set in
+  `AGENTS.md` section 8.
+- `tests/test_v11.py` — 12 tests, none of which require a checker to be installed.
+
+### Scope notes
+
+- **No dependency was added.** FELRA does not ship, download, or require any
+  solver or proof assistant. `tla2tools.jar` in particular is never fetched; its
+  path is declared by the project.
+- **No existing result changed meaning.** `success` keeps its pipeline semantics
+  everywhere. `AGENTS.md` section 11 lists changing the meaning of "pass" or
+  "proof" as requiring approval; adding a *separate* status alongside is what
+  avoids being that change.
+- **`z3`'s `unsat`/`sat` mapping has not been exercised against a real solver** —
+  z3 is not installed on the machine where this slice was written. Only its
+  `unavailable` path is tested. Recorded in the register rather than glossed.
+
+### Fixed
+
+- A path bug in the formal adapter, found by running a real checker rather than a
+  mock. The obligation was resolved against the caller's working directory and the
+  subprocess's directory was then set to the obligation's own parent, so the path
+  was consumed twice. TLC's resulting "file not found" exit was nearly recorded as
+  a refutation of a model it had in fact checked cleanly. Paths are absolute before
+  invocation now, and a clean transcript with a non-zero exit is reported as
+  `unknown` with the disagreement stated rather than resolved in either direction.
+
 ## 1.0.0 — 2026-07-20
 
 FELRA v1.0.0 — completion of the whitepaper's implementation roadmap stage 2

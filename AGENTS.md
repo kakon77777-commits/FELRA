@@ -319,6 +319,16 @@ felra --version
 felra run examples/basic/project.yaml --output artifacts/basic
 ```
 
+Where a version ships a drill, run it too. A drill plants defects in the real
+source and requires each to be caught **by the check named for it**; a green suite
+says the code passes its tests, while a drill says the tests would notice if the
+code broke. The two are different facts and only the second is evidence about the
+tests.
+
+```bash
+Z3_EXE=/path/to/z3 python scripts/drill_v18.py
+```
+
 For versions containing advanced, data, batch, or statistical workflows, also run the matching examples.
 
 Example gate set:

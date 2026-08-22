@@ -23,6 +23,8 @@ from felra.figures import FigureFactory
 from felra.models import Claim, EvidenceBundle
 from felra.preregistration import PreregistrationError, verify_preregistration
 from felra.provenance import build_provenance, write_provenance
+from felra.certificates import verify_certificate
+from felra.numeric_policy import describe_numeric_environment, evidence_status
 from felra.reproducibility import result_sha256, write_replay_project
 from felra.registry import append_registry_record, build_registry_record, resolve_registry_path
 from felra.sampling import (
@@ -328,6 +330,93 @@ def run_project(project_file: str | Path, output_dir: str | Path) -> ProjectRun:
     return run
 
 
+def _formal_results(run: ProjectRun) -> list[dict[str, Any]]:
+    return [
+        analysis.metrics
+        for analysis in run.analyses
+        if analysis.kind == "formal_check" and analysis.metrics.get("formal_status")
+    ]
+
+
+def _certificate_section(run: ProjectRun) -> dict[str, Any] | None:
+    """Every certificate, its hash, and the verdict of RE-CHECKING it here.
+
+    §18.4 asks for the hashes in the manifest and for an invalid certificate to
+    stop a replay counting as a complete pass. Re-verification happens at manifest
+    time rather than being copied from the issuing analysis, because a certificate
+    confirmed only by the thing that issued it has been confirmed by nobody.
+    """
+    entries: list[dict[str, Any]] = []
+    for analysis in run.analyses:
+        for cert in (analysis.metrics.get("certificates") or []):
+            ok, detail = verify_certificate(cert)
+            entries.append({
+                "analysis": analysis.analysis_id,
+                "kind": cert.get("kind"),
+                "subject": cert.get("subject"),
+                "certificate_sha256": cert.get("certificate_sha256"),
+                "reverified": ok,
+                "detail": detail,
+            })
+    if not entries:
+        return None
+    invalid = [e for e in entries if not e["reverified"]]
+    return {
+        "count": len(entries),
+        "all_reverified": not invalid,
+        "invalid": invalid,
+        "entries": entries,
+        "note": (
+            "each certificate is re-checked from its own recorded data at manifest "
+            "time; a run carrying an unverifiable certificate is not a complete pass"
+        ),
+    }
+
+
+def _numeric_section(run: ProjectRun) -> dict[str, Any] | None:
+    policy = getattr(run.project, "numeric_policy", None)
+    if policy is None:
+        return None
+    section = policy.as_dict()
+    section["environment"] = describe_numeric_environment()
+    section["conversion_history"] = []
+    section["note"] = (
+        "stage A records the policy; it does not change how anything is computed. "
+        "`declared_but_not_implemented` lists what this version does not yet honour."
+    )
+    return section
+
+
+def _evidence_section(run: ProjectRun) -> dict[str, Any]:
+    # `falsified` is section 11's F: 發現有效反例 — a counterexample was found.
+    # It was briefly driven by `not run.passed`, which conflates "some analysis
+    # did not meet its declared expectation" with "the claim is refuted". A
+    # cross-backend inconsistency is a finding about REPRESENTATIONS, not a
+    # counterexample to the claim, and reporting it as `falsified` would put a
+    # verdict on the mathematics that the run never reached. Caught by running
+    # this against the Collatz anchor project, where a deliberate float64
+    # disagreement was reported as though the claim had been refuted.
+    refuted = any(
+        not bundle.passed and any(result.counterexamples for result in bundle.results)
+        for bundle in run.bundles
+    )
+    certs = _certificate_section(run)
+    ladders = [a for a in run.analyses if a.kind == "precision_ladder"]
+    backends = [a for a in run.analyses if a.kind == "cross_backend"]
+    return evidence_status(
+        executed=True,
+        reproduced=None,
+        precision_stable=(all(a.success for a in ladders) if ladders else None),
+        cross_backend_consistent=(all(a.success for a in backends)
+                                  if backends else None),
+        exact_verified=(
+            all(a.metrics.get("exactness") == "exact_on_every_point"
+                for a in backends) if backends else None),
+        numerically_certified=(certs["all_reverified"] if certs else None),
+        formal_results=_formal_results(run),
+        falsified=refuted,
+    )
+
 def _write_project_manifest(run: ProjectRun) -> None:
     environment = {
         "python": sys.version.split()[0],
@@ -353,6 +442,12 @@ def _write_project_manifest(run: ProjectRun) -> None:
         "config_sha256": _config_hash(run.project),
         "result_sha256": result_sha256(run),
         "environment": environment,
+        # Stage A governance. Absent unless a policy was declared, so a project
+        # that predates v1.2.0 produces a byte-identical manifest shape and an
+        # unchanged result_sha256 (addendum 17.1, 17.3).
+        "numeric": _numeric_section(run),
+        "certificates": _certificate_section(run),
+        "evidence_status": _evidence_section(run),
         "preregistration": run.preregistration,
         "replay_project": run.replay_project,
         "provenance": run.provenance_artifacts,

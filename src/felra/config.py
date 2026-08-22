@@ -6,6 +6,13 @@ from typing import Any, TypeAlias
 
 import yaml
 
+from felra.numeric_backends import NUMERIC_ONTOLOGIES
+from felra.precision_ladder import GROWTH_STRATEGIES
+from felra.numeric_policy import NumericPolicy
+
+from felra.formal import BACKENDS as FORMAL_BACKENDS
+from felra.formal import FORMAL_STATUSES
+
 
 class ProjectConfigError(ValueError):
     """Raised when a FELRA project file is incomplete or inconsistent."""
@@ -68,7 +75,12 @@ class DatasetColumnSpec:
             required = bool(data.get("required", True))
         else:
             raise ProjectConfigError(f"Dataset column {name!r} must be a type string or mapping")
-        if kind not in {"float", "int", "str", "bool"}:
+        # Stage B: externally produced exact data. `exact` keeps the literal
+        # text and an exact Fraction; `interval` keeps a pair of them. Neither
+        # rounds on load, which is the whole point — a column typed `float`
+        # discards the producer's precision before FELRA has seen it, and a
+        # column typed `str` keeps the text while losing that it is a number.
+        if kind not in {"float", "int", "str", "bool", "exact", "interval"}:
             raise ProjectConfigError(f"Dataset column {name!r} has unsupported type {kind!r}")
         return cls(name=name, kind=kind, required=required)
 
@@ -428,6 +440,94 @@ class CrossMethodAnalysisSpec(BaseAnalysisSpec):
     methods: tuple[CrossMethodSpec, ...] = ()
     precision_digits: int = 30
     tolerance: float = 1e-9
+
+
+@dataclass(frozen=True)
+class ObligationExportAnalysisSpec(BaseAnalysisSpec):
+    """Stage-F proof-obligation export. `claim_id` is required: this analysis
+    renders a CLAIM, so without one there is nothing to export."""
+
+    backend: str | None = None
+    path: str | None = None
+    expect: str = "verified"
+    timeout_seconds: int = 900
+
+
+@dataclass(frozen=True)
+class DecimalResidualAnalysisSpec(BaseAnalysisSpec):
+    """§12's verification pack. `value` is a quoted string, read exactly."""
+
+    value: str = ""
+    bases: tuple[int, ...] = (2, 3, 8, 10, 16)
+    levels: int = 8
+    backends: tuple[str, ...] = ("float64", "decimal", "binary_mp")
+    precisions: tuple[int, ...] = (16, 40)
+
+
+@dataclass(frozen=True)
+class NumericCertificateAnalysisSpec(BaseAnalysisSpec):
+    """Stage-E strict envelope. `box` bounds are quoted strings, read exactly."""
+
+    expression: str = ""
+    box: dict[str, dict[str, str]] = field(default_factory=dict)
+    establish: str | None = None
+
+
+@dataclass(frozen=True)
+class PrecisionLadderAnalysisSpec(BaseAnalysisSpec):
+    """Stage-D precision ladder. Tolerances are STRINGS so that a declared 1e-80
+    is read exactly rather than through a float that cannot hold it."""
+
+    expression: str = ""
+    points: tuple[dict[str, str], ...] = ()
+    initial_precision_bits: int = 64
+    strategy: str = "doubling"
+    step_bits: int = 64
+    max_precision_bits: int = 4096
+    consecutive_levels: int = 3
+    absolute_tolerance: str = "1e-80"
+    relative_tolerance: str = "1e-70"
+
+
+@dataclass(frozen=True)
+class CrossBackendAnalysisSpec(BaseAnalysisSpec):
+    """Stage-C cross-ontology comparison.
+
+    `points` are lists of EXACT STRINGS on purpose: writing `0.1` as a YAML float
+    would round the value before any backend saw it, and the analysis would then
+    compare three ontologies' opinions of an already-rounded number.
+    """
+
+    expression: str = ""
+    backends: tuple[str, ...] = ("float64", "decimal", "rational")
+    points: tuple[dict[str, str], ...] = ()
+    tolerance: float = 1e-12
+    decimal_prec: int = 50
+    report_points: int = 20
+
+
+@dataclass(frozen=True)
+class FormalCheckAnalysisSpec(BaseAnalysisSpec):
+    """Stage-4 external formal check.
+
+    A project declares WHICH adapter and WHAT obligation, never a command to run.
+    `expect` is the formal status the author asserts in advance, so a checker
+    returning something else is a reportable disagreement rather than a silently
+    accepted result.
+    """
+
+    backend: str = "lean"
+    obligation: str = ""
+    project_dir: str | None = None
+    jar: str | None = None
+    path: str | None = None
+    config_file: str | None = None
+    expect: str = "verified"
+    timeout_seconds: int = 900
+    assumptions: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    derives_from: tuple[str, ...] = ()
+    axioms_within: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -1000,11 +1100,246 @@ def _parse_analysis(data: dict[str, Any], index: int) -> AnalysisSpec:
             tolerance=tolerance,
         )
 
+    if kind == "obligation_export":
+        if not base.get("claim_id"):
+            raise ProjectConfigError(
+                "obligation_export requires a claim_id; it renders a claim, so "
+                "without one there is nothing to export")
+        oe_backend = data.get("backend")
+        if oe_backend is not None:
+            oe_backend = str(oe_backend)
+            if oe_backend not in FORMAL_BACKENDS:
+                raise ProjectConfigError(
+                    "obligation_export backend must be one of %s"
+                    % ", ".join(FORMAL_BACKENDS))
+            if oe_backend != "z3":
+                raise ProjectConfigError(
+                    "only the z3 backend can check an exported obligation; the "
+                    "exporter emits SMT-LIB2, and handing it to a model checker or "
+                    "a proof assistant would be handing them a file they cannot read")
+        oe_expect = str(data.get("expect", "verified"))
+        if oe_expect not in FORMAL_STATUSES:
+            raise ProjectConfigError(
+                "obligation_export expect must be one of %s"
+                % ", ".join(FORMAL_STATUSES))
+        return ObligationExportAnalysisSpec(
+            **base,
+            backend=oe_backend,
+            path=(str(data["path"]) if data.get("path") else None),
+            expect=oe_expect,
+            timeout_seconds=int(data.get("timeout_seconds", 900)),
+        )
+
+    if kind == "decimal_residual":
+        _require_fields(data, {"value"}, context=f"Analysis {analysis_id!r}")
+        if isinstance(data["value"], float):
+            raise ProjectConfigError(
+                "decimal_residual value is a YAML float, already rounded before any "
+                "residue is taken; quote it so it is read exactly")
+        dr_bases = tuple(int(b) for b in data.get("bases", (2, 3, 8, 10, 16)))
+        if any(b < 2 for b in dr_bases):
+            raise ProjectConfigError("decimal_residual bases must all be at least 2")
+        if len(dr_bases) < 5:
+            raise ProjectConfigError(
+                "acceptance 18.5 asks for at least five bases; %d given"
+                % len(dr_bases))
+        dr_backends = tuple(str(b) for b in
+                            data.get("backends", ("float64", "decimal", "binary_mp")))
+        for backend in dr_backends:
+            if backend not in NUMERIC_ONTOLOGIES:
+                raise ProjectConfigError(
+                    "decimal_residual backend must be one of %s"
+                    % ", ".join(NUMERIC_ONTOLOGIES))
+        return DecimalResidualAnalysisSpec(
+            **base,
+            value=str(data["value"]),
+            bases=dr_bases,
+            levels=int(data.get("levels", 8)),
+            backends=dr_backends,
+            precisions=tuple(int(p) for p in data.get("precisions", (16, 40))),
+        )
+
+    if kind == "numeric_certificate":
+        _require_fields(data, {"expression", "box"}, context=f"Analysis {analysis_id!r}")
+        raw_box = data["box"]
+        if not isinstance(raw_box, dict) or not raw_box:
+            raise ProjectConfigError("numeric_certificate box must be a non-empty mapping")
+        nc_box: dict[str, dict[str, str]] = {}
+        for name, bounds in raw_box.items():
+            if not isinstance(bounds, dict) or {"lo", "hi"} - set(bounds):
+                raise ProjectConfigError(
+                    "numeric_certificate box.%s needs `lo` and `hi`" % name)
+            for key in ("lo", "hi"):
+                if isinstance(bounds[key], float):
+                    raise ProjectConfigError(
+                        "numeric_certificate box.%s.%s is a YAML float, already "
+                        "rounded before the enclosure is built; quote it so the "
+                        "endpoint is exact" % (name, key))
+            nc_box[str(name)] = {"lo": str(bounds["lo"]), "hi": str(bounds["hi"])}
+        establish = data.get("establish")
+        if establish is not None and str(establish) not in (">", ">=", "<", "<="):
+            raise ProjectConfigError(
+                "numeric_certificate establish must be one of >, >=, <, <=")
+        return NumericCertificateAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            box=nc_box,
+            establish=None if establish is None else str(establish),
+        )
+
+    if kind == "precision_ladder":
+        _require_fields(data, {"expression", "points"},
+                        context=f"Analysis {analysis_id!r}")
+        pl_strategy = str(data.get("strategy", "doubling"))
+        if pl_strategy not in GROWTH_STRATEGIES:
+            raise ProjectConfigError(
+                "precision_ladder strategy must be one of %s"
+                % ", ".join(GROWTH_STRATEGIES))
+        pl_points = []
+        for item in data["points"]:
+            if not isinstance(item, dict):
+                raise ProjectConfigError("precision_ladder points must be mappings")
+            row = {}
+            for name, value in item.items():
+                if isinstance(value, float):
+                    raise ProjectConfigError(
+                        "precision_ladder point %s=%r is a YAML float, already "
+                        "rounded before the ladder starts; quote it" % (name, value))
+                row[str(name)] = str(value)
+            pl_points.append(row)
+        if not pl_points:
+            raise ProjectConfigError("precision_ladder requires a non-empty points list")
+        levels = int(data.get("consecutive_levels", 3))
+        if levels < 2:
+            raise ProjectConfigError(
+                "precision_ladder consecutive_levels must be at least 2; one level "
+                "compared with itself is not a stability test")
+        initial = int(data.get("initial_precision_bits", 64))
+        maximum = int(data.get("max_precision_bits", 4096))
+        if initial < 1 or maximum < initial:
+            raise ProjectConfigError(
+                "precision_ladder needs 1 <= initial_precision_bits <= "
+                "max_precision_bits")
+        for key in ("absolute_tolerance", "relative_tolerance"):
+            if key in data and isinstance(data[key], float):
+                raise ProjectConfigError(
+                    "precision_ladder %s must be a quoted string; a YAML float "
+                    "cannot hold the magnitudes this field is for. Note that YAML "
+                    "reads `1e-80` as a string but `1.0e-80` as a float, so the "
+                    "same tolerance is safe written one way and lossy the other — "
+                    "quote it and the distinction stops mattering." % key)
+        return PrecisionLadderAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            points=tuple(pl_points),
+            initial_precision_bits=initial,
+            strategy=pl_strategy,
+            step_bits=int(data.get("step_bits", 64)),
+            max_precision_bits=maximum,
+            consecutive_levels=levels,
+            absolute_tolerance=str(data.get("absolute_tolerance", "1e-80")),
+            relative_tolerance=str(data.get("relative_tolerance", "1e-70")),
+        )
+
+    if kind == "cross_backend":
+        _require_fields(data, {"expression", "points"},
+                        context=f"Analysis {analysis_id!r}")
+        cb_backends = tuple(str(x) for x in data.get(
+            "backends", ("float64", "decimal", "rational")))
+        if len(cb_backends) < 2:
+            raise ProjectConfigError("cross_backend requires at least two backends")
+        if len(cb_backends) != len(set(cb_backends)):
+            raise ProjectConfigError("cross_backend backends must be unique")
+        for backend in cb_backends:
+            if backend not in NUMERIC_ONTOLOGIES:
+                raise ProjectConfigError(
+                    "cross_backend backend must be one of %s"
+                    % ", ".join(NUMERIC_ONTOLOGIES)
+                )
+        raw_points = data["points"]
+        if not isinstance(raw_points, list) or not raw_points:
+            raise ProjectConfigError("cross_backend requires a non-empty points list")
+        cb_points = []
+        for item in raw_points:
+            if not isinstance(item, dict):
+                raise ProjectConfigError("cross_backend points must be mappings")
+            row = {}
+            for name, value in item.items():
+                if isinstance(value, float):
+                    raise ProjectConfigError(
+                        "cross_backend point %s=%r is a YAML float, which has "
+                        "already been rounded before any backend sees it; quote it "
+                        "as a string so it can be parsed exactly" % (name, value)
+                    )
+                row[str(name)] = str(value)
+            cb_points.append(row)
+        cb_tolerance = float(data.get("tolerance", 1e-12))
+        if cb_tolerance < 0:
+            raise ProjectConfigError("cross_backend tolerance must not be negative")
+        cb_prec = int(data.get("decimal_prec", 50))
+        if cb_prec < 1:
+            raise ProjectConfigError("cross_backend decimal_prec must be positive")
+        return CrossBackendAnalysisSpec(
+            **base,
+            expression=str(data["expression"]),
+            backends=cb_backends,
+            points=tuple(cb_points),
+            tolerance=cb_tolerance,
+            decimal_prec=cb_prec,
+            report_points=int(data.get("report_points", 20)),
+        )
+
+    if kind == "formal_check":
+        _require_fields(data, {"backend", "obligation"}, context=f"Analysis {analysis_id!r}")
+        fc_backend = str(data["backend"])
+        if fc_backend not in FORMAL_BACKENDS:
+            raise ProjectConfigError(
+                "formal_check backend must be one of %s; the backend list is closed "
+                "on purpose, see docs/FORMAL_BACKENDS.md" % ", ".join(FORMAL_BACKENDS)
+            )
+        obligation = str(data["obligation"]).strip()
+        if not obligation:
+            raise ProjectConfigError("formal_check obligation must not be empty")
+        expect = str(data.get("expect", "verified"))
+        if expect not in FORMAL_STATUSES:
+            raise ProjectConfigError(
+                "formal_check expect must be one of %s" % ", ".join(FORMAL_STATUSES)
+            )
+        timeout_seconds = int(data.get("timeout_seconds", 900))
+        if timeout_seconds <= 0:
+            raise ProjectConfigError("formal_check timeout_seconds must be positive")
+        if data.get("axioms_within") is not None and fc_backend != "lean":
+            raise ProjectConfigError(
+                "formal_check axioms_within is only meaningful for the lean "
+                "backend; declaring it elsewhere would be a claim nothing checks"
+            )
+        if fc_backend == "tlc" and not data.get("jar"):
+            raise ProjectConfigError(
+                "formal_check backend tlc requires a `jar` path; FELRA does not ship "
+                "or download tla2tools.jar"
+            )
+        return FormalCheckAnalysisSpec(
+            **base,
+            backend=fc_backend,
+            obligation=obligation,
+            project_dir=(str(data["project_dir"]) if data.get("project_dir") else None),
+            jar=(str(data["jar"]) if data.get("jar") else None),
+            path=(str(data["path"]) if data.get("path") else None),
+            config_file=(str(data["config_file"]) if data.get("config_file") else None),
+            expect=expect,
+            timeout_seconds=timeout_seconds,
+            assumptions=tuple(str(x) for x in data.get("assumptions", ())),
+            limitations=tuple(str(x) for x in data.get("limitations", ())),
+            derives_from=tuple(str(x) for x in data.get("derives_from", ())),
+            axioms_within=(tuple(str(x) for x in data["axioms_within"])
+                           if data.get("axioms_within") is not None else None),
+        )
+
     raise ProjectConfigError(
         f"Unsupported analysis type {kind!r}; expected sensitivity, residual, parameter_sweep, "
         "pareto, descriptive, hypothesis_test, bootstrap_ci, power, robustness, "
         "multiple_comparisons, cross_validation, model_comparison, symbolic, "
-        "numerical_soundness, or cross_method"
+        "numerical_soundness, cross_method, cross_backend, precision_ladder, numeric_certificate, or formal_check"
     )
 
 
@@ -1022,6 +1357,7 @@ class ProjectSpec:
     registry: RegistrySpec = field(default_factory=RegistrySpec)
     preregistration: PreregistrationSpec = field(default_factory=PreregistrationSpec)
     source_path: Path | None = None
+    numeric_policy: NumericPolicy | None = None
     raw: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
@@ -1203,6 +1539,7 @@ def load_project(path: str | Path) -> ProjectSpec:
         registry=RegistrySpec.from_mapping(raw.get("registry")),
         preregistration=PreregistrationSpec.from_mapping(raw.get("preregistration")),
         source_path=source.resolve(),
+        numeric_policy=NumericPolicy.from_mapping(raw.get("numeric_policy")),
         raw=raw,
     )
     _validate_analysis_references(project)

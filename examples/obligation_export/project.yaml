@@ -1,0 +1,58 @@
+project:
+  id: obligation-export-demo
+  title: Generating the obligation, not just checking one somebody wrote
+  language: en
+
+# Stage F's last item. Every other formal channel in FELRA checks an obligation a
+# human wrote; this one renders one FROM a claim and hands it to a solver.
+#
+# Each export is checked TWICE: as written, and with the conclusion flipped. A
+# faithful export makes exactly one of the pair unsat. If both agree, the
+# obligation does not distinguish the claim from its negation and the verdict is
+# `unknown` — which is the only thing standing between this and an exporter that
+# emits something trivially unsatisfiable and "proves" everything.
+#
+# Requires Z3_EXE. Without it every analysis here reports `unavailable`.
+
+parameters:
+  x:
+    type: float
+    range: [-2.0, 3.0]
+    samples: 21
+  n:
+    type: int
+    range: [1, 10]
+    samples: 10
+
+claims:
+  - id: square_is_nonnegative
+    statement: x squared is never negative on the declared domain
+    expression: x ** 2 >= 0
+    status: hypothesis
+    required_checks:
+      - numerical
+      - counterexample_search
+
+  - id: x_is_at_least_one
+    statement: x is at least 1 — FALSE on this domain, and the solver should say so
+    expression: x >= 1
+    status: hypothesis
+    required_checks:
+      - numerical
+
+analyses:
+  - id: prove_square_nonnegative
+    type: obligation_export
+    title: Export the true claim and let z3 settle it over the whole domain
+    claim_id: square_is_nonnegative
+    backend: z3
+    path: ${Z3_EXE}
+    expect: verified
+
+  - id: refute_x_at_least_one
+    type: obligation_export
+    title: Export the false claim — a counterexample is the correct outcome
+    claim_id: x_is_at_least_one
+    backend: z3
+    path: ${Z3_EXE}
+    expect: refuted
